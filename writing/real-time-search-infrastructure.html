@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Search Infrastructure at Scale - kitxor</title>
+    <style>
+        body {
+            font-family: Georgia, serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            font-size: 1.4rem;
+            margin: 30px 0 15px 0;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 20px 0 10px 0;
+        }
+
+        .nav {
+            text-align: center;
+            margin: 20px 0;
+            padding: 10px 0;
+            border-top: 1px solid #ddd;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .nav a {
+            margin: 0 10px;
+            text-decoration: none;
+            color: #0066cc;
+        }
+
+        .code {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            border: 1px solid #ddd;
+        }
+
+        .highlight {
+            background: #fff9c4;
+            padding: 10px;
+            margin: 15px 0;
+            border-left: 3px solid #ffc107;
+        }
+
+        .performance {
+            background: #e8f5e8;
+            padding: 10px;
+            margin: 15px 0;
+            border-left: 3px solid #28a745;
+        }
+
+        a {
+            color: #0066cc;
+        }
+
+        ul, ol {
+            margin: 10px 0 10px 20px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Real-Time Search Infrastructure at Scale</h1>
+
+<p><em>Building sub-500ms city-wide vehicle search with dynamic geographic expansion and real-time availability filtering</em></p>
+
+<div class="nav">
+    <a href="index.html">Home</a> |
+    <a href="../writing.html">← Writing</a> |
+    <a href="comics.html">Comics</a>
+</div>
+
+<p>Search infrastructure in real-time marketplaces faces a unique challenge: provide instant, accurate results across thousands of dynamic inventory items while maintaining strict performance constraints. When users search for vehicles, they expect immediate responses with current availability—no stale data, no false positives, no delays.</p>
+
+<p>This is the technical story of a search system that delivers sub-500ms response times for city-wide vehicle searches, combining geographic indexing, real-time availability filtering, and intelligent result ranking under extreme performance pressure.</p>
+
+<h2>The Real-Time Search Challenge</h2>
+
+<p>Building search infrastructure for marketplace inventory requires solving multiple technical problems simultaneously while meeting unforgiving performance requirements.</p>
+
+<div class="performance">
+<strong>Performance Requirements:</strong> Sub-500ms response time for city-wide searches across thousands of vehicles with real-time availability, geographic filtering, and personalized ranking.
+</div>
+
+<p><strong>Core Technical Constraints:</strong></p>
+<ul>
+<li><strong>Response Time:</strong> 500ms maximum for complete search results including pagination</li>
+<li><strong>Data Freshness:</strong> Real-time availability accuracy—no stale inventory data acceptable</li>
+<li><strong>Geographic Scale:</strong> City-wide search radius with intelligent boundary expansion</li>
+<li><strong>Complex Filtering:</strong> Time-based availability, location proximity, vehicle attributes</li>
+<li><strong>Result Quality:</strong> Personalized ranking integrated without performance degradation</li>
+</ul>
+
+<h3>Why Traditional Search Engines Don't Work</h3>
+
+<p>Standard search solutions like Elasticsearch or Solr struggle with the real-time inventory problem:</p>
+
+<ul>
+<li><strong>Index Lag:</strong> Document indexing delays mean showing unavailable vehicles</li>
+<li><strong>Update Overhead:</strong> Constant availability changes create excessive index churn</li>
+<li><strong>Consistency Issues:</strong> Distributed search indexes struggle with real-time consistency</li>
+<li><strong>Performance Trade-offs:</strong> Rich search features often sacrifice response time</li>
+</ul>
+
+<div class="highlight">
+<strong>Key Insight:</strong> "This is not social media" - Vehicle availability is binary and critical. Unlike social feeds where stale data is acceptable, showing unavailable cars destroys user experience and wastes time.
+</div>
+
+<h2>Geographic Circle Expansion Architecture</h2>
+
+<p>The search system employs a dynamic geographic expansion strategy that starts with high-relevance local results and intelligently expands the search radius until sufficient results are found.</p>
+
+<h3>Intelligent Radius Expansion Algorithm</h3>
+
+<p>Rather than using fixed radius increments, the system employs city-specific expansion patterns based on geographic understanding and vehicle density:</p>
+
+<div class="code">Geographic Expansion Strategy:
+1. Start with initial radius based on search location type (city center vs suburbs)
+2. Use city-specific expansion pattern: 2km → 5km → 20km → city-wide
+3. At each radius level:
+   - Query Redis GEORADIUS for vehicles within distance
+   - Batch check availability for all found vehicles
+   - Apply personalization ranking to available vehicles
+   - Return results if pagination requirements met
+4. If insufficient results, expand to next radius level
+5. Continue until target result count achieved or maximum radius reached</div>
+
+<h3>City-Specific Configuration</h3>
+
+<p>Different cities require different expansion strategies based on vehicle density, geographic constraints, and urban layout:</p>
+
+<div class="code">City Configuration Examples:
+Mumbai (High Density):
+- Initial: 1km → 3km → 8km → 15km
+- Dense urban environment with short travel distances
+
+Bangalore (Medium Density):  
+- Initial: 2km → 5km → 12km → 25km
+- Balanced urban/suburban with moderate vehicle spread
+
+Delhi NCR (Large Metro):
+- Initial: 3km → 8km → 20km → 50km  
+- Extended metropolitan area requiring larger search radii</div>
+
+<div class="highlight">
+<strong>Optimization Insight:</strong> City-specific expansion patterns reduce unnecessary geographic queries while ensuring comprehensive coverage based on local market characteristics.
+</div>
+
+<h2>Redis-Based Geographic Indexing</h2>
+
+<p>The system leverages Redis geospatial capabilities for high-performance geographic queries while maintaining real-time data consistency.</p>
+
+<h3>Geospatial Data Structure</h3>
+
+<p>Vehicle locations are stored in Redis using geospatial indexing that enables efficient radius-based queries:</p>
+
+<div class="code">Redis Geospatial Architecture:
+• Primary Index: GEOADD city:{city_id}:vehicles {lng} {lat} {vehicle_id}
+• City-level partitioning for performance and geographic isolation
+• Real-time updates as vehicles move or change status
+• GEORADIUS queries for circle-based search with distance sorting
+
+Query Performance:
+• GEORADIUS operations: O(N+log(M)) where N=results, M=total vehicles
+• Typical query time: 5-15ms for city-wide geographic filtering
+• Memory efficient: ~50 bytes per vehicle for geospatial data</div>
+
+<h3>Batch Availability Verification</h3>
+
+<p>After identifying geographically relevant vehicles, the system performs batch availability checks to minimize Redis round trips:</p>
+
+<div class="code">Batch Availability Check Process:
+1. GEORADIUS returns list of vehicle_ids within current search radius
+2. Construct batch availability query: HMGET availability:cache {vehicle_ids...}
+3. Filter results for time-based availability using start/end time parameters
+4. Return only vehicles available for requested booking period
+
+Optimization Benefits:
+• Single Redis call for all availability checks within radius
+• Reduced network latency through batching
+• Consistent availability data from centralized cache</div>
+
+<h2>Real-Time Availability Integration</h2>
+
+<p>The search system integrates directly with the inventory management system to ensure absolute real-time accuracy in availability data.</p>
+
+<h3>Availability Cache Architecture</h3>
+
+<div class="performance">
+<strong>Design Principle:</strong> Search system queries the same Redis infrastructure used by the inventory management system, ensuring perfect consistency between search results and actual availability.
+</div>
+
+<div class="code">                    SEARCH-INVENTORY INTEGRATION
+
+                         INVENTORY UPDATES
++----------------+    +----------------+    +----------------+    +----------------+
+| Booking        |--->| Inventory      |--->| Redis          |--->| Availability   |
+| Events         |    | Management     |    | Updates        |    | Cache          |
++----------------+    +----------------+    +----------------+    +----------------+
+                                                    |                      |
+                                                    |                      |
+                         SEARCH QUERIES             |                      |
++----------------+    +----------------+    +----------------+    +----------------+
+| User Search    |--->| Geographic     |--->| Batch          |<---| Real-time      |
+| Request        |    | Filtering      |    | Availability   |    | Consistency    |
++----------------+    +----------------+    +----------------+    +----------------+</div>
+
+<h3>Time-Based Availability Logic</h3>
+
+<p>Vehicle availability is not just binary—it depends on the requested booking time window. The system efficiently handles complex time-based availability calculations:</p>
+
+<div class="code">Time-Based Availability Algorithm:
+1. For each vehicle in geographic results:
+   - Retrieve current booking schedule from Redis
+   - Check for conflicts with requested [start_time, end_time]
+   - Validate against maintenance/blocking schedules
+   - Apply buffer time requirements (cleaning, handover)
+
+2. Availability States:
+   - AVAILABLE: No conflicts in requested time window
+   - PARTIALLY_AVAILABLE: Available but with time restrictions  
+   - UNAVAILABLE: Conflicts exist in requested window
+
+3. Only AVAILABLE vehicles included in search results</div>
+
+<h2>Performance Optimization Strategies</h2>
+
+<p>Achieving sub-500ms response times requires aggressive optimization at every system layer.</p>
+
+<h3>Query Path Optimization</h3>
+
+<div class="code">Performance Optimization Techniques:
+• Redis Connection Pooling: Minimize connection overhead
+• Batch Operations: Single Redis call for multiple lookups
+• Early Termination: Stop radius expansion once pagination filled
+• Parallel Processing: Concurrent availability checks within radius
+• Memory Caching: JVM-level caching for city configurations
+• Query Optimization: Minimize Redis operations per search request
+
+Typical Performance Breakdown:
+• Geographic query (GEORADIUS): 10-20ms
+• Batch availability check: 15-30ms  
+• Recommendation ranking: 20-40ms
+• Result formatting/pagination: 5-10ms
+• Network/serialization: 10-20ms
+• Total: 60-120ms (well under 500ms budget)</div>
+
+<h3>Connection and Memory Management</h3>
+
+<p>High-performance search requires careful resource management:</p>
+
+<div class="code">Resource Optimization:
+• Redis Connection Pool: 50-100 connections per instance
+• JVM Heap Tuning: Optimized for high-frequency allocations
+• Object Pooling: Reuse search result objects to reduce GC pressure
+• Async Processing: Non-blocking I/O for Redis operations
+• Memory Monitoring: Real-time tracking of allocation patterns</div>
+
+<h2>Recommendation Integration</h2>
+
+<p>The search system integrates personalized recommendations without compromising performance by leveraging pre-computed recommendation scores.</p>
+
+<h3>Pre-computed Recommendation Strategy</h3>
+
+<div class="highlight">
+<strong>Performance Trade-off:</strong> Rather than computing recommendations in real-time (too slow), the system applies pre-computed recommendation scores to search results during the ranking phase.
+</div>
+
+<div class="code">Recommendation Integration Process:
+1. Search identifies available vehicles within geographic constraints
+2. Retrieve pre-computed recommendation scores for current user
+3. Apply recommendation ranking to available vehicle set
+4. Sort results by combined relevance score (availability + recommendation + proximity)
+5. Return top results with pagination
+
+Ranking Formula:
+final_score = (availability_score * 0.4) + 
+              (recommendation_score * 0.3) + 
+              (proximity_score * 0.2) + 
+              (recency_score * 0.1)</div>
+
+<h3>Dynamic Ranking Adjustments</h3>
+
+<p>The system applies real-time ranking adjustments based on search context:</p>
+
+<ul>
+<li><strong>Proximity Weighting:</strong> Closer vehicles receive higher ranking scores</li>
+<li><strong>Availability Confidence:</strong> Vehicles with longer availability windows ranked higher</li>
+<li><strong>User Preference Matching:</strong> Vehicle attributes aligned with user history</li>
+<li><strong>Temporal Relevance:</strong> Recent vehicle additions or updates boosted in ranking</li>
+</ul>
+
+<h2>Pagination and Result Management</h2>
+
+<p>Efficient pagination in geographic search requires careful balance between performance and user experience.</p>
+
+<h3>Dynamic Result Loading</h3>
+
+<div class="code">Pagination Strategy:
+• Page Size: 20 vehicles per page (optimized for mobile/desktop)
+• Expansion Logic: Continue radius expansion until 40+ results found
+• Result Buffering: Cache additional results for subsequent page requests
+• Stable Sorting: Consistent ranking across pagination requests
+• Deep Pagination: Limit to 10 pages (200 vehicles) for performance
+
+Performance Optimization:
+• Stop radius expansion early if sufficient results found
+• Cache expanded results for faster subsequent pages
+• Use cursor-based pagination for large result sets</div>
+
+<h2>City-Wide Search Architecture</h2>
+
+<div class="code">                    SEARCH SYSTEM ARCHITECTURE
+
+                         REQUEST PROCESSING
++----------------+    +----------------+    +----------------+    +----------------+
+| User Search    |--->| Parameter      |--->| City           |--->| Geographic     |
+| Request        |    | Validation     |    | Configuration  |    | Query Plan     |
++----------------+    +----------------+    +----------------+    +----------------+
+        |                      |                      |                      |
+        v                      v                      v                      v
++----------------+    +----------------+    +----------------+    +----------------+
+| Location       |    | Time Window    |    | Radius         |    | Redis          |
+| Parsing        |    | Validation     |    | Expansion      |    | GEORADIUS      |
++----------------+    +----------------+    +----------------+    +----------------+
+
+                         AVAILABILITY FILTERING  
++----------------+    +----------------+    +----------------+    +----------------+
+| Geographic     |--->| Batch          |--->| Time-based     |--->| Available      |
+| Results        |    | Availability   |    | Filtering      |    | Vehicle Set    |
++----------------+    +----------------+    +----------------+    +----------------+
+        |                      |                      |                      |
+        v                      v                      v                      v
++----------------+    +----------------+    +----------------+    +----------------+
+| Vehicle IDs    |    | Redis HMGET    |    | Booking        |    | Filtered       |
+| (Geographic)   |    | (Batch Query)  |    | Conflict       |    | Results        |
++----------------+    +----------------+    +----------------+    +----------------+
+
+                         RANKING AND RESPONSE
++----------------+    +----------------+    +----------------+    +----------------+
+| Available      |--->| Recommendation |--->| Result         |--->| JSON           |
+| Vehicles       |    | Scoring        |    | Ranking        |    | Response       |
++----------------+    +----------------+    +----------------+    +----------------+</div>
+
+<h2>Error Handling and Fallback Strategies</h2>
+
+<p>Real-time search systems require robust error handling to maintain service availability under various failure conditions.</p>
+
+<h3>Graceful Degradation</h3>
+
+<div class="code">Fallback Strategy Hierarchy:
+1. Primary: Real-time Redis search with full features
+2. Degraded: Cached results with availability warnings
+3. Minimal: Static vehicle list without personalization
+4. Emergency: City-wide inventory dump with basic filtering
+
+Error Scenarios:
+• Redis connection failure: Fall back to database queries
+• Timeout exceeded: Return partial results with continuation token
+• Geographic service unavailable: Expand to city-wide search
+• Recommendation service down: Return results without personalization</div>
+
+<h3>Performance Monitoring and Alerting</h3>
+
+<div class="performance">
+<strong>SLA Monitoring:</strong> Real-time tracking of search performance with immediate alerting when response times exceed 400ms (80% of SLA budget).
+</div>
+
+<ul>
+<li><strong>Response Time Tracking:</strong> P50, P95, P99 latency monitoring across all search operations</li>
+<li><strong>Availability Monitoring:</strong> Success rate and error classification for search requests</li>
+<li><strong>Geographic Performance:</strong> Per-city performance analysis to identify regional issues</li>
+<li><strong>Resource Utilization:</strong> Redis connection pool usage, memory allocation patterns</li>
+</ul>
+
+<h2>Performance Results and Business Impact</h2>
+
+<div class="performance">
+<strong>Performance Achievement:</strong> Consistent sub-500ms response times for city-wide vehicle searches while maintaining 100% real-time availability accuracy across all markets.
+</div>
+
+<p><strong>System Performance Metrics:</strong></p>
+<ul>
+<li><strong>Response Time:</strong> P95 latency under 300ms, P99 under 450ms</li>
+<li><strong>Availability Accuracy:</strong> Zero false positives in search results (no unavailable vehicles shown)</li>
+<li><strong>Geographic Coverage:</strong> Complete city-wide search capability with intelligent boundary expansion</li>
+<li><strong>Throughput:</strong> Handle 10K+ concurrent search requests during peak periods</li>
+</ul>
+
+<p><strong>Business Impact:</strong></p>
+<ul>
+<li><strong>User Experience:</strong> Instant search results improved customer satisfaction and booking conversion</li>
+<li><strong>Inventory Utilization:</strong> Accurate availability display maximized vehicle utilization rates</li>
+<li><strong>Operational Efficiency:</strong> Real-time accuracy eliminated customer service issues from stale search data</li>
+<li><strong>Scalability:</strong> System architecture scaled across 25+ cities without performance degradation</li>
+</ul>
+
+<h2>Key Engineering Insights</h2>
+
+<div class="highlight">
+<strong>Real-time accuracy trumps caching in critical applications:</strong> For inventory-based searches, showing stale data causes more problems than potential performance gains from caching.
+</div>
+
+<div class="highlight">
+<strong>Geographic intelligence enables performance optimization:</strong> City-specific radius expansion patterns significantly reduce unnecessary queries while ensuring comprehensive coverage.
+</div>
+
+<div class="highlight">
+<strong>Batch operations are crucial for sub-second performance:</strong> Minimizing Redis round trips through intelligent batching enables meeting strict performance requirements.
+</div>
+
+<h2>Evolution and Future Enhancements</h2>
+
+<p><strong>Predictive Availability:</strong> Future systems could incorporate machine learning to predict vehicle availability patterns and pre-compute search results for common queries.</p>
+
+<p><strong>Advanced Geographic Intelligence:</strong> Integration with traffic data and route optimization could enhance proximity calculations and travel time accuracy.</p>
+
+<p><strong>Real-time Personalization:</strong> As computational resources increase, the system could move toward real-time recommendation computation during search execution.</p>
+
+<p style="text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid #ddd;">
+    <a href="../writing.html">← Back to All Writing</a>
+</p>
+
+</body>
+</html>
