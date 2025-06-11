@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Score IoT Platform - Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            line-height: 1.6;
+            color: #333;
+            background: #fff;
+            margin: 0;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: normal;
+            margin-bottom: 10px;
+            color: #111;
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 30px;
+            font-style: italic;
+        }
+
+        .nav {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px 0;
+            border-top: 1px solid #ddd;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .nav a {
+            margin: 0 15px;
+            text-decoration: none;
+            font-size: 1.1rem;
+            color: #0066cc;
+        }
+
+        .nav a:hover {
+            text-decoration: underline;
+        }
+
+        h2 {
+            font-size: 1.4rem;
+            font-weight: normal;
+            margin: 40px 0 20px 0;
+            color: #111;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 8px;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            font-weight: normal;
+            margin: 30px 0 15px 0;
+            color: #333;
+        }
+
+        .intro {
+            background: #f9f9f9;
+            border-left: 4px solid #0066cc;
+            padding: 20px;
+            margin: 25px 0;
+            font-size: 1.05rem;
+        }
+
+        .architecture-diagram {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 6px;
+            margin: 25px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .tech-insight {
+            background: #f8f9fa;
+            border-left: 4px solid #28a745;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+
+        .performance-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #e9ecef;
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #0066cc;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .math-formula {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            text-align: center;
+        }
+
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 25px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .back-link {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            text-decoration: none;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+            
+            .nav a {
+                display: block;
+                margin: 10px 0;
+            }
+
+            .performance-stats {
+                grid-template-columns: 1fr;
+            }
+        }
+.architecture-diagram {
+    white-space: pre-wrap;  /* Preserve formatting but allow wrapping */
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    overflow-x: auto;
+}
+
+
+.code-block {
+    background: #2d3748;
+    color: #e2e8f0;
+    padding: 20px;
+    border-radius: 6px;
+    margin: 20px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    overflow-x: auto;
+    white-space: pre;  /* Add this line */
+}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Driver Score IoT Platform</h1>
+            <p class="subtitle">Real-time vehicle telemetry processing with distributed scheduling and quantized event analysis</p>
+        </div>
+
+        <div class="nav">
+            <a href="index.html">Home</a> |
+            <a href="../writing.html">← Writing</a> |
+            <a href="comics.html">comics</a> |
+        </div>
+
+        <div class="intro">
+            <p>Building a system that processes vehicle telemetry data from thousands of cars, scores driver behavior in real-time, and predicts maintenance needs requires solving several interesting engineering problems: distributed scheduling, time-series data optimization, and real-time event quantization.</p>
+            
+            <p>This is a technical deep-dive into the architecture and algorithms behind a driver scoring platform that handled 5-6K concurrent vehicle bookings, processing millions of OBD data points daily.</p>
+        </div>
+
+        <h2>System Architecture</h2>
+
+        <p>The system processes two distinct data streams: high-frequency vehicle telemetry (OBD data) and low-frequency booking lifecycle events. The key insight was separating these concerns - telemetry data flows through optimized time-series storage, while booking events trigger scoring workflows through a distributed scheduling system.</p>
+
+        <div class="architecture-diagram">
++-------------+    +-------------+    +-------------+    +-------------+
+| OBD Device  |--->|   Server    |--->| Binary      |--->| TimescaleDB |
+| (CAN Bus)   |    | (REST API)  |    | Decoder     |    | (Time-ser.) |
++-------------+    +-------------+    +-------------+    +-------------+
+                                                                   |
+                                                                   | (Debezium CDC)
+                                                                   v
++-------------+                                            +-------------+
+| Booking     |                                            |    Kafka    |
+| Lifecycle   |-------------------------------------------->|  (Events)   |
+| Events      |                                            +-------------+
++-------------+                                                    |
+                                                                   v
+                   +-------------+    +-------------+    +-------------+
+                   |     SQS     |<---|  Service    |<---|  Consumer   |
+                   | (Scheduler) |    |  Pickup     |    |             |
+                   +-------------+    +-------------+    +-------------+
+                           |                 
+                           v                 
+                   +-------------+    +-------------+    +-------------+
+                   |     SQS     |--->|  Distance   |--->|    SQS      |
+                   | (Intervals) |    | Calculator  |    | (Events)    |
+                   +-------------+    +-------------+    +-------------+
+                                                                  |
+                                                                  v
+                                                          +-------------+
+                                                          | Event       |
+                                                          | Scoring     |
+                                                          | Algorithm   |
+                                                          +-------------+
+                                                                  |
+                                                                  v
+                                                          +-------------+
+                                                          | Final Score |
+                                                          | & Publish   |
+                                                          +-------------+
+	</div>
+
+        <h3>Key Design Decisions</h3>
+
+        <p><strong>TimescaleDB for telemetry storage:</strong> Migrated from MemSQL to TimescaleDB for superior time-series data compression and query performance. TimescaleDB's automatic partitioning by time intervals enabled efficient queries for specific booking windows without scanning entire datasets.</p>
+
+        <p><strong>Separation of data streams:</strong> OBD telemetry (high-frequency, high-volume) flows through optimized storage, while booking events (low-frequency, critical) trigger scheduling workflows. This prevents telemetry volume from overwhelming the scoring system.</p>
+
+        <p><strong>Change Data Capture (CDC):</strong> Used Debezium to capture database changes and publish to Kafka, enabling real-time data pipeline without impacting the primary telemetry ingestion performance.</p>
+
+        <h2>Distributed Scheduling with SQS</h2>
+
+        <p>The core challenge: score driver behavior every 5 minutes for each active booking, handling 5-6K concurrent bookings without external schedulers or distributed timer systems.</p>
+
+        <div class="highlight">
+            <strong>The Problem:</strong> Traditional cron jobs or timer-based systems become complex when managing thousands of independent schedules with different start times, variable durations, and potential failures.
+        </div>
+
+        <h3>Self-Perpetuating Queue Pattern</h3>
+
+        <p>The solution leverages SQS's <code>VisibilityTimeout</code> feature to create a self-scheduling system where each message schedules its own successor:</p>
+
+        <div class="code-block">
+// Message structure carrying all necessary context
+{
+  "booking_id": "abc123",
+  "car_id": "vehicle_456", 
+  "car_type": "sedan",
+  "booking_start": "2023-01-01T10:00:00Z",
+  "next_score_time": "2023-01-01T10:05:00Z",
+  "interval_count": 1
+}
+
+// Processing logic
+def process_scoring_message(message):
+    booking_data = parse_message(message)
+    
+    # Calculate score for this interval
+    score = calculate_driver_score(booking_data)
+    
+    # Publish score results
+    publish_score(score)
+    
+    # Schedule next scoring (self-perpetuation)
+    if booking_still_active(booking_data.booking_id):
+        next_message = create_next_interval_message(booking_data)
+        sqs.send_message(
+            MessageBody=next_message,
+            DelaySeconds=300  # 5 minutes
+        )
+        </div>
+
+        <div class="tech-insight">
+            <p><strong>Why this works:</strong> Each message contains complete context (booking metadata, car details, timing information), eliminating the need for external state storage or database lookups during scheduling. The system is inherently fault-tolerant - if a message fails, only that specific booking's scoring is affected.</p>
+        </div>
+
+        <h3>Performance Characteristics</h3>
+
+        <div class="performance-stats">
+            <div class="stat">
+                <span class="stat-value">6K</span>
+                <span class="stat-label">Concurrent Bookings</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">72K</span>
+                <span class="stat-label">Messages/Hour</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">300s</span>
+                <span class="stat-label">Scoring Interval</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">0</span>
+                <span class="stat-label">External Schedulers</span>
+            </div>
+        </div>
+
+        <p><strong>Idle Detection Optimization:</strong> Before processing telemetry data, the system checks vehicle movement status:</p>
+
+        <div class="code-block">
+def is_vehicle_idle(booking_id, time_window):
+    telemetry = fetch_recent_telemetry(booking_id, time_window)
+    
+    lat_variance = calculate_position_variance(telemetry.gps_data)
+    speed_max = max(telemetry.speed_readings)
+    ignition_status = telemetry.ignition_off
+    
+    return (lat_variance < POSITION_THRESHOLD and 
+            speed_max == 0 and 
+            ignition_status == True)
+
+# Skip expensive scoring computation for idle vehicles
+if is_vehicle_idle(booking_id, last_5_minutes):
+    schedule_next_check()  # Just reschedule, skip scoring
+    return
+        </div>
+
+        <h2>Event Quantization Algorithm</h2>
+
+        <p>Driver scoring combines two components: baseline smoothness scoring and discrete event analysis. The event scoring system quantizes continuous telemetry data into discrete behavioral events using statistical distribution analysis.</p>
+
+        <h3>Baseline Score Calculation</h3>
+
+        <p>Establishes driving smoothness baseline relative to similar vehicles in similar geographic areas:</p>
+
+        <div class="math-formula">
+baseline_score = Σ(smoothness_metrics) / normalization_factor<br><br>
+where smoothness_metrics = [acceleration_variance, jerk_frequency, speed_consistency]
+        </div>
+
+        <p>The baseline accounts for vehicle type (sedan vs SUV have different acceleration profiles) and geographic context (city vs highway driving patterns).</p>
+
+        <h3>Event Detection and Quantization</h3>
+
+        <p>Continuous telemetry streams are processed to extract discrete driving events:</p>
+
+        <div class="code-block">
+def extract_driving_events(telemetry_window):
+    events = []
+    
+    # Acceleration events
+    for i in range(1, len(telemetry_window)):
+        delta_v = telemetry_window[i].speed - telemetry_window[i-1].speed
+        delta_t = telemetry_window[i].timestamp - telemetry_window[i-1].timestamp
+        acceleration = delta_v / delta_t
+        
+        if abs(acceleration) > ACCELERATION_THRESHOLD:
+            events.append({
+                'type': 'acceleration' if acceleration > 0 else 'braking',
+                'magnitude': abs(acceleration),
+                'timestamp': telemetry_window[i].timestamp
+            })
+    
+    # Cornering events  
+    lateral_accelerations = calculate_lateral_acceleration(telemetry_window)
+    for lat_accel in lateral_accelerations:
+        if abs(lat_accel.magnitude) > CORNERING_THRESHOLD:
+            events.append({
+                'type': 'cornering',
+                'magnitude': abs(lat_accel.magnitude),
+                'timestamp': lat_accel.timestamp
+            })
+            
+    return events
+        </div>
+
+        <h3>Statistical Distribution and Quantile Bucketing</h3>
+
+        <p>Events are scored against statistical distributions built from historical data of similar vehicle types and geographic regions:</p>
+
+        <div class="code-block">
+# Build distribution from historical data
+def build_event_distributions(car_type, geographic_region):
+    historical_events = query_historical_events(car_type, geographic_region)
+    
+    acceleration_dist = build_distribution(historical_events, 'acceleration')
+    braking_dist = build_distribution(historical_events, 'braking') 
+    cornering_dist = build_distribution(historical_events, 'cornering')
+    
+    return {
+        'acceleration': create_quantile_buckets(acceleration_dist),
+        'braking': create_quantile_buckets(braking_dist),
+        'cornering': create_quantile_buckets(cornering_dist)
+    }
+
+def create_quantile_buckets(distribution):
+    return {
+        'gentle': distribution.percentile(0, 25),      # Bottom 25%
+        'normal': distribution.percentile(25, 75),     # Middle 50% 
+        'aggressive': distribution.percentile(75, 95), # Next 20%
+        'extreme': distribution.percentile(95, 100)    # Top 5%
+    }
+        </div>
+
+        <p><strong>Event Scoring:</strong> Each detected event is scored based on its quantile bucket:</p>
+
+        <div class="math-formula">
+event_score = bucket_weight × frequency_penalty × magnitude_factor<br><br>
+where:<br>
+• gentle events: weight = 1.0<br>
+• normal events: weight = 1.2<br>  
+• aggressive events: weight = 2.0<br>
+• extreme events: weight = 4.0
+        </div>
+
+        <h3>Composite Score Calculation</h3>
+
+        <p>The final driver score combines baseline smoothness with event scoring:</p>
+
+        <div class="code-block">
+def calculate_composite_score(baseline_score, events, time_window):
+    # Weighted event scoring
+    event_penalties = 0
+    for event in events:
+        bucket = classify_event_severity(event)
+        penalty = BUCKET_WEIGHTS[bucket] * event.magnitude
+        event_penalties += penalty
+    
+    # Normalize by time window and expected event frequency
+    normalized_events = event_penalties / (time_window / BASELINE_INTERVAL)
+    
+    # Composite scoring with configurable weights
+    composite_score = (
+        baseline_score * BASELINE_WEIGHT +           # 60%
+        (100 - normalized_events) * EVENT_WEIGHT     # 40%  
+    )
+    
+    return max(0, min(100, composite_score))  # Clamp to 0-100 range
+        </div>
+
+        <h2>Performance Optimizations</h2>
+
+        <h3>Time-Series Query Optimization</h3>
+
+        <p>TimescaleDB's hypertable partitioning enables efficient querying of specific time windows:</p>
+
+        <div class="code-block">
+-- Optimized query leveraging time partitioning
+SELECT 
+    timestamp,
+    speed,
+    acceleration_x,
+    acceleration_y,
+    gps_latitude,
+    gps_longitude
+FROM vehicle_telemetry 
+WHERE booking_id = $1 
+  AND timestamp BETWEEN $2 AND $3
+ORDER BY timestamp ASC;
+
+-- Automatic partition pruning reduces scan from entire dataset 
+-- to single 5-minute partition
+        </div>
+
+        <h3>Computation Caching Strategy</h3>
+
+        <p>Statistical distributions and quantile buckets are pre-computed and cached:</p>
+
+        <div class="tech-insight">
+            <p><strong>Cache Strategy:</strong> Event distributions are calculated daily for each (car_type, geographic_region) combination and cached in Redis. This reduces scoring latency from ~200ms to ~15ms by eliminating real-time statistical computations.</p>
+        </div>
+
+        <h2>Real-World Challenges and Solutions</h2>
+
+        <h3>Variable OBD Data Frequency</h3>
+
+        <p><strong>Problem:</strong> OBD devices prioritize vehicle operation over data transmission. When battery load is high or processing power is needed for critical vehicle functions, telemetry frequency can drop significantly.</p>
+
+        <p><strong>Solution:</strong> Adaptive scoring windows and intelligent interpolation:</p>
+
+        <div class="code-block">
+def adaptive_scoring_window(booking_id, target_interval):
+    available_data = count_telemetry_points(booking_id, target_interval)
+    
+    if available_data < MINIMUM_POINTS_THRESHOLD:
+        # Extend window to gather sufficient data
+        extended_window = target_interval * DATA_SUFFICIENCY_MULTIPLIER
+        return extended_window
+    
+    return target_interval
+
+def interpolate_missing_data(telemetry_points):
+    # Use GPS trajectory and last known speed for interpolation
+    # More sophisticated than linear interpolation due to vehicle physics
+    for gap in detect_data_gaps(telemetry_points):
+        interpolated = physics_based_interpolation(
+            gap.start_point, 
+            gap.end_point,
+            gap.duration
+        )
+        telemetry_points.insert_interpolated(interpolated)
+        </div>
+
+        <h3>Geographic Context Normalization</h3>
+
+        <p><strong>Challenge:</strong> Driver behavior varies significantly between geographic contexts - highway driving vs city traffic vs rural roads require different scoring baselines.</p>
+
+        <p><strong>Solution:</strong> Dynamic geographic classification using GPS data and map matching:</p>
+
+        <div class="code-block">
+def classify_geographic_context(gps_trajectory):
+    road_types = map_match_to_road_network(gps_trajectory)
+    
+    context_scores = {
+        'highway': calculate_highway_percentage(road_types),
+        'urban': calculate_urban_percentage(road_types), 
+        'rural': calculate_rural_percentage(road_types)
+    }
+    
+    primary_context = max(context_scores.items(), key=lambda x: x[1])
+    return primary_context[0]
+
+# Different scoring parameters for different contexts
+CONTEXT_PARAMETERS = {
+    'highway': {
+        'speed_tolerance': 15,  # Higher speed variance acceptable
+        'acceleration_threshold': 2.5  # Gentler thresholds
+    },
+    'urban': {
+        'speed_tolerance': 5,   # Tight speed control expected
+        'acceleration_threshold': 1.8  # More sensitive to events
+    }
+}
+        </div>
+
+        <h2>Key Engineering Insights</h2>
+
+        <div class="tech-insight">
+            <p><strong>Self-scheduling systems scale better than external schedulers:</strong> The SQS pattern eliminated the complexity of distributed timer management while providing natural fault isolation - failed bookings don't affect others.</p>
+        </div>
+
+        <div class="tech-insight">
+            <p><strong>Statistical normalization is crucial for fairness:</strong> Raw event detection without geographic and vehicle-type normalization led to biased scoring. A defensive driver in heavy traffic would score worse than an aggressive driver on empty highways.</p>
+        </div>
+
+        <div class="tech-insight">
+            <p><strong>Time-series databases transform IoT performance:</strong> Moving from traditional RDBMS to TimescaleDB reduced query latencies from seconds to milliseconds for time-window operations, enabling real-time scoring.</p>
+        </div>
+
+        <h2>Production Learnings</h2>
+
+        <p><strong>Monitoring and Observability:</strong> Real-time scoring systems require comprehensive monitoring of both data quality and algorithm performance. We instrumented scoring latency, data completeness percentages, and score distribution changes to detect system degradation.</p>
+
+        <p><strong>Algorithm Validation:</strong> Scoring algorithms require continuous validation against ground truth. We implemented A/B testing infrastructure to compare algorithm versions and validate scoring accuracy against manual expert assessment.</p>
+
+        <p><strong>Graceful Degradation:</strong> When telemetry data quality drops below thresholds, the system falls back to simplified scoring models rather than failing completely. This maintains service availability during network issues or device malfunctions.</p>
+
+        <div class="back-link">
+            <a href="../writing.html">← Back to All writings</a>
+        </div>
+    </div>
+</body>
+</html>
