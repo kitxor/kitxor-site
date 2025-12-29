@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why Transformers Killed RNNs ~ kitxor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: #ffffff;
+            color: #000000;
+            padding: 30px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .back-link::before {
+            content: '← ';
+        }
+
+        .post-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000000;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            color: #000000;
+        }
+
+        .post-meta {
+            color: #666666;
+            font-size: 0.85rem;
+        }
+
+        .content {
+            color: #000000;
+        }
+
+        h2 {
+            color: #000000;
+            font-size: 1.5rem;
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 3px solid #000000;
+            padding-left: 10px;
+        }
+
+        h3 {
+            color: #000000;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 12px;
+        }
+
+        code {
+            background: #f0f0f0;
+            color: #000000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+
+        ul, ol {
+            margin: 12px 0;
+            padding-left: 40px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            color: #004499;
+        }
+
+        .section {
+            margin: 20px 0;
+        }
+
+        .callout {
+            background: #f9f9f9;
+            border-left: 4px solid #000000;
+            padding: 12px 15px;
+            margin: 15px 0;
+            color: #333333;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">back to home</a>
+
+        <div class="post-header">
+            <h1>Why Transformers Killed RNNs</h1>
+            <div class="post-meta">2025-12-30 | machine learning, deep learning, transformers</div>
+        </div>
+
+        <div class="content">
+            <p>"Attention Is All You Need" - the paper title wasn't hype. It was a death sentence for RNNs.</p>
+
+            <h2>The Sequential Trap</h2>
+            <p>Seq2seq modeling ran on RNNs - LSTMs, GRUs, sometimes CNNs. All sequential. Each token waited for the previous one. h<sub>t</sub> depended on h<sub>t-1</sub>. You couldn't parallelize within sequences.</p>
+
+            <p>Encoder-decoder architectures used RNNs for everything: building representations (encoding) and modeling dependencies (decoding). Attention was just a helper mechanism bolted on top to connect the two.</p>
+
+            <h2>The Bottleneck</h2>
+            <p>Long sequences killed performance. Token 1 reaching token 100 required 99 intermediate steps. Information degraded through multiple hops. A 512-token sequence needed 512 sequential operations.</p>
+
+            <p>Attention helped - let decoders peek at encoder states directly - but RNNs still did the heavy lifting. The sequential chain remained.</p>
+
+            <h2>The Insight</h2>
+            <p>What if attention wasn't a helper? What if it was everything?</p>
+
+            <p>Self-attention: all tokens attend to all tokens in parallel. No sequential dependency chain. Full GPU utilization. Transformers handle both computation and dependency modeling without a single RNN.</p>
+
+            <h2>The Result</h2>
+            <p>RNNs became obsolete overnight. GPT, BERT, every LLM you use today - all transformers. Faster training, perfect parallelization, no distance decay.</p>
+
+            <p>The sequential bottleneck was dead. Attention was all you needed.</p>
+
+            <div class="callout">
+                <p><strong>Reference:</strong> <a href="https://arxiv.org/abs/1706.03762" target="_blank">Attention Is All You Need (Vaswani et al., 2017)</a></p>
+            </div>
+
+            <div style="margin-top: 40px; padding-top: 15px; border-top: 2px solid #000000; text-align: center;">
+                <a href="../index.html" class="back-link">back to all posts</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
