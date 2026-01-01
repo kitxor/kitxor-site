@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDN Design Part 1: Fundamentals & Why You Actually Need One ~ kitxor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: #ffffff;
+            color: #000000;
+            padding: 30px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .back-link::before {
+            content: '← ';
+        }
+
+        .post-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000000;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            color: #000000;
+        }
+
+        .post-meta {
+            color: #666666;
+            font-size: 0.85rem;
+        }
+
+        .content {
+            color: #000000;
+        }
+
+        h2 {
+            color: #000000;
+            font-size: 1.5rem;
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 3px solid #000000;
+            padding-left: 10px;
+        }
+
+        h3 {
+            color: #000000;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 12px;
+        }
+
+        code {
+            background: #f0f0f0;
+            color: #000000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: #f9f9f9;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #000000;
+            display: block;
+        }
+
+        ul, ol {
+            margin: 12px 0;
+            padding-left: 40px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            color: #004499;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: #f9f9f9;
+        }
+
+        th, td {
+            border: 1px solid #cccccc;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background: #000000;
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            th, td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">back to home</a>
+
+        <div class="post-header">
+            <h1>CDN Design Part 1: Fundamentals & Why You Actually Need One</h1>
+            <div class="post-meta">2026-01-02 | system design, cdn, networking</div>
+        </div>
+
+        <div class="content">
+            <p>Users in Australia complain your site is slow. Server is in the US. "Just add a CDN."</p>
+            <p>What is a CDN, and why does it help?</p>
+
+            <h2>What is a CDN?</h2>
+            <p>Content Delivery Network: geographically distributed reverse proxy servers that cache and serve content closer to users.</p>
+
+            <ul>
+                <li><strong>Reverse proxy:</strong> Sits between users and origin, forwards requests</li>
+                <li><strong>Distributed:</strong> 200+ locations worldwide</li>
+                <li><strong>Cache:</strong> Stores copies of files for faster delivery</li>
+            </ul>
+
+            <p>Warehouses for content. Instead of shipping from one central warehouse (origin), stock items near major cities (edges).</p>
+
+            <h2>CDN vs Web Host vs Reverse Proxy</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Component</th>
+                        <th>Compute</th>
+                        <th>Store</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Web Host</td>
+                        <td>Yes</td>
+                        <td>Yes</td>
+                        <td>Runs application, executes code</td>
+                    </tr>
+                    <tr>
+                        <td>CDN</td>
+                        <td>No*</td>
+                        <td>Yes</td>
+                        <td>Caches static files, reduces latency</td>
+                    </tr>
+                    <tr>
+                        <td>Reverse Proxy</td>
+                        <td>No</td>
+                        <td>Sometimes</td>
+                        <td>Forwards requests, load balancing, SSL</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p><em>*Modern CDNs adding edge compute (Cloudflare Workers, Lambda@Edge)</em></p>
+
+            <p><strong>Key:</strong> CDN doesn't replace your host. It sits in front, handling content delivery. Origin focuses on application logic.</p>
+
+            <h2>The Core Problem: Physics</h2>
+            <p><strong>You cannot beat the speed of light.</strong></p>
+
+            <p>Light travels ~200,000 km/s in fiber. Slow when users are 15,000 km away.</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Route</th>
+                        <th>Distance</th>
+                        <th>Min Round Trip</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>SF ↔ NY</td>
+                        <td>4,000 km</td>
+                        <td>40ms</td>
+                    </tr>
+                    <tr>
+                        <td>London ↔ Sydney</td>
+                        <td>17,000 km</td>
+                        <td>170ms</td>
+                    </tr>
+                    <tr>
+                        <td>NY ↔ Tokyo</td>
+                        <td>11,000 km</td>
+                        <td>110ms</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p>Add routing, congestion, processing? Multiply by 2-3x.</p>
+
+            <p>Server in Hong Kong. Europe user: 250ms per round trip. Need 6 round trips (TCP + TLS + HTTP). 6 × 250ms = <strong>1.5 seconds network overhead.</strong> Before app responds.</p>
+
+            <p>CDN solution: Serve from London edge (10ms away, not 250ms).</p>
+
+            <h2>Why CDN?</h2>
+
+            <h3>1. Performance</h3>
+            <p>Can't make light faster. Reduce distance it travels.</p>
+
+            <pre><code>WITHOUT CDN (Europe → Australia):
+TCP + TLS + HTTP: 6 × 100ms = 600ms
+
+WITH CDN (Europe → nearby edge):
+TCP + TLS + HTTP: 6 × 20ms = 120ms (cache miss)
+Cached: 40ms (93% faster)</code></pre>
+
+            <p>Why: TCP/TLS handshake at nearby edge (20ms). Edge caches content. Subsequent requests never hit origin.</p>
+
+            <h3>2. Security</h3>
+            <p><strong>DDoS Protection:</strong></p>
+            <ul>
+                <li>Origin: 10 Gbps, one location</li>
+                <li>CDN: 100+ Tbps, 200+ locations</li>
+                <li>100 Gbps attack distributed = 500 Mbps per edge = absorbed</li>
+            </ul>
+
+            <p><strong>Edge filtering:</strong> Rate limiting, WAF rules, bot detection at edge. Attack traffic blocked before reaching origin.</p>
+
+            <pre><code>1M attack req/s → edge
+├─ 900K blocked (rate limit)
+├─ 50K blocked (WAF)
+├─ 40K blocked (bot detection)
+└─ 10K legitimate → origin
+
+Origin sees: 10K/s (manageable)
+Without CDN: 1M/s (dead)</code></pre>
+
+            <h3>3. Availability</h3>
+            <p>No single point of failure.</p>
+
+            <ul>
+                <li>Without CDN: All users → one origin. Origin down = site down.</li>
+                <li>With CDN: Users → 200+ edges. One edge fails → route to next. Origin down → cached content serves.</li>
+            </ul>
+
+            <h2>What Gets Cached?</h2>
+            <p><strong>Cache:</strong> JS, CSS, images, videos, fonts, static HTML.</p>
+            <p><strong>Don't cache:</strong> User feeds, API responses, real-time data, personalized content.</p>
+            <p><strong>Rule:</strong> Same for everyone = cache it. Different per user = don't.</p>
+
+            <h2>Key Takeaways</h2>
+            <ul>
+                <li>CDN = distributed reverse proxy with caching</li>
+                <li>Physics: distance = latency. CDNs reduce distance.</li>
+                <li>93% latency reduction for cached content</li>
+                <li>DDoS absorption + edge filtering</li>
+                <li>No single point of failure</li>
+            </ul>
+
+            <h2>Next: Part 2</h2>
+            <p>How CDNs actually work:</p>
+            <ul>
+                <li>Multi-tier architecture (child → parent → origin)</li>
+                <li>Edge server selection (DNS, Anycast)</li>
+                <li>Pull vs Push caching</li>
+                <li>Request flow</li>
+            </ul>
+
+            <div style="margin-top: 40px; padding-top: 15px; border-top: 2px solid #000000; text-align: center;">
+                <a href="../index.html" class="back-link">back to all posts</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

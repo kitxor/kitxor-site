@@ -44,6 +44,27 @@ I help convert blog posts from plain text/markdown to HTML format while:
 3. **Staying compact:** Minimal whitespace between elements
 4. **Preserving content:** Never change the user's writing, only add HTML structure
 
+## Blog Writing Philosophy
+
+**Key principle:** Give the key points that build the knowledge tree, not the entire knowledge tree.
+
+- **Compact and concise:** Cut all fat. Remove verbosity. Keep only what matters.
+- **Core insights only:** Focus on the essential concepts that form nodes in the knowledge tree
+- **No fluff:** No excessive explanations, redundant examples, or verbose descriptions
+- **Clean formatting:** No emojis in tables or content (keep it professional)
+- **Dense information:** Every sentence should add value
+
+Think: transformer blog style - short paragraphs, gets to the point, no redundancy.
+
+## Current Projects
+
+**CDN Design Series (4-5 parts):**
+- Part 1: Fundamentals & Why CDN (completed 2026-01-02)
+- Part 2: Architecture + Caching Strategies (planned)
+- Part 3: Cache Invalidation + Management (planned)
+- Part 4: System Design Interview Guide (planned)
+- Part 5: Real-World + Advanced (optional)
+
 ## Blog Post Template Structure
 
 Each post should have:
