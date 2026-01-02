@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDN Design Part 2: Architecture & Caching Strategies ~ kitxor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: #ffffff;
+            color: #000000;
+            padding: 30px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .back-link::before {
+            content: '← ';
+        }
+
+        .post-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000000;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            color: #000000;
+        }
+
+        .post-meta {
+            color: #666666;
+            font-size: 0.85rem;
+        }
+
+        .content {
+            color: #000000;
+        }
+
+        h2 {
+            color: #000000;
+            font-size: 1.5rem;
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 3px solid #000000;
+            padding-left: 10px;
+        }
+
+        h3 {
+            color: #000000;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 12px;
+        }
+
+        code {
+            background: #f0f0f0;
+            color: #000000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: #f9f9f9;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #000000;
+            display: block;
+        }
+
+        ul, ol {
+            margin: 12px 0;
+            padding-left: 40px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            color: #004499;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: #f9f9f9;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            border: 1px solid #cccccc;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background: #000000;
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+
+            table {
+                font-size: 0.75rem;
+            }
+
+            th, td {
+                padding: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">back to home</a>
+
+        <div class="post-header">
+            <h1>CDN Design Part 2: Architecture & Caching Strategies</h1>
+            <div class="post-meta">2026-01-02 | system design, cdn, networking</div>
+        </div>
+
+        <div class="content">
+            <p>Part 1 covered what CDNs are and why you need them. Part 2 covers how they actually work: request flow, multi-tier architecture, and caching decisions.</p>
+
+            <h2>Request Flow</h2>
+
+            <h3>Cache HIT (Fast Path)</h3>
+            <pre><code>User requests cdn.example.com/logo.png
+1. User → DNS (returns nearest edge IP)
+2. User → Edge server checks cache → HIT
+3. Return immediately
+
+Timeline: ~100ms
+├─ TCP + TLS handshake: 80ms (client ↔ edge)
+└─ HTTP request/response: 20ms</code></pre>
+
+            <h3>Cache MISS (Slow Path)</h3>
+            <pre><code>User requests cdn.example.com/video.mp4
+1. User → Edge checks cache → MISS
+2. Edge forwards to parent CDN
+3. Parent checks cache → MISS (worst case)
+4. Parent fetches from origin
+5. Cache at parent + edge
+6. Return to user
+
+Timeline:
+First request: ~700ms
+├─ Client ↔ edge: 100ms (TCP/TLS/request)
+├─ Edge ↔ origin: 600ms (cross-continent TCP/TLS/fetch)
+└─ Edge → client: 20ms (response)
+
+Subsequent requests: ~100ms (served from edge cache)</code></pre>
+
+            <h3>Flow Diagram</h3>
+            <pre><code>User → DNS → Edge Server
+         ├─ Cache HIT (100ms)
+         └─ Cache MISS → Parent CDN
+                     ├─ Cache HIT (300ms)
+                     └─ Cache MISS → Origin (700ms)</code></pre>
+
+            <h2>Multi-Tier Architecture</h2>
+
+            <h3>Why Multiple Tiers?</h3>
+            <p><strong>Single-tier problem:</strong></p>
+            <ul>
+                <li>200 edges, each with 10% cache miss rate</li>
+                <li>Popular video requested globally</li>
+                <li>All 200 edges miss simultaneously</li>
+                <li>200 parallel requests slam origin → Origin: dead</li>
+            </ul>
+
+            <p><strong>Multi-tier solution:</strong></p>
+            <ul>
+                <li>200 child edges → 10 parent CDNs (20 edges per parent)</li>
+                <li>Same popular video miss: 200 edges forward to parents</li>
+                <li>10 parents de-duplicate → 10 requests to origin (not 200)</li>
+                <li><strong>Origin load: 95% reduction</strong></li>
+            </ul>
+
+            <p>This parent tier is called <strong>Origin Shield</strong> (AWS/Cloudflare term) - it collapses duplicate requests before hitting origin.</p>
+
+            <h3>Math</h3>
+            <pre><code>1M requests/day:
+├─ Child hit (90%): 900K served from edge
+├─ Parent hit (85% of 10%): 85K served from parent
+└─ Origin hit: 15K (1.5% of total)
+
+Without parent: 100K origin requests
+With parent: 15K origin requests
+Reduction: 85%</code></pre>
+
+            <h3>The Three Tiers</h3>
+            <p><strong>Child CDN (Edge Servers):</strong></p>
+            <ul>
+                <li>Count: 200+ globally (AWS CloudFront has 450+, Fastly ~70)</li>
+                <li>Storage: 1-10 TB per server</li>
+                <li>Cache: Hot content (top 10-20% popular)</li>
+                <li>Hit ratio: 85-95%</li>
+            </ul>
+
+            <p><strong>Parent CDN (Origin Shield):</strong></p>
+            <ul>
+                <li>Count: 10-20 globally (AWS has 13 Origin Shield regions)</li>
+                <li>Storage: 50-500 TB per server</li>
+                <li>Cache: Long tail content</li>
+                <li>Hit ratio: 80-90% of child misses</li>
+                <li>Industry names: AWS "Origin Shield", Cloudflare "Argo Tiered Caching"</li>
+            </ul>
+
+            <p><strong>Origin Server:</strong></p>
+            <ul>
+                <li>Count: 1 (or small cluster)</li>
+                <li>Storage: Unlimited (source of truth)</li>
+                <li>Gets hit: Only on double cache miss (~1-2% of total requests)</li>
+            </ul>
+
+            <h2>Edge Server Selection</h2>
+
+            <h3>DNS-Based Geo-Routing</h3>
+            <p>User queries DNS for <code>cdn.example.com</code>:</p>
+            <ol>
+                <li>Authoritative DNS looks at user IP</li>
+                <li>GeoIP database: maps IP → location</li>
+                <li>Returns nearest edge server IP</li>
+                <li>User connects to that edge</li>
+            </ol>
+
+            <p><strong>"Nearest" determined by:</strong></p>
+            <ul>
+                <li>Geographic distance (lat/long)</li>
+                <li>Network topology (AS path length)</li>
+                <li>Measured latency (active probes)</li>
+                <li>Server load (avoid overloaded edges)</li>
+            </ul>
+
+            <h3>DNS TTL and Failover</h3>
+            <p>DNS response cached (TTL: 60-300 seconds).</p>
+            <p><strong>Problem:</strong></p>
+            <ul>
+                <li>Edge goes down at 10:00 AM</li>
+                <li>User's DNS cached at 9:55 AM (expires 10:00 AM)</li>
+                <li>User keeps hitting dead edge until DNS expires</li>
+                <li>Failover delay = DNS TTL duration</li>
+            </ul>
+            <p><strong>Trade-off:</strong> Lower TTL = faster failover, more DNS queries</p>
+
+            <h3>Anycast IP (Alternative)</h3>
+            <ul>
+                <li>Multiple edges share same IP (e.g., 1.1.1.1)</li>
+                <li>BGP routing automatically directs to nearest</li>
+                <li>Faster failover (no DNS caching delay)</li>
+                <li>Used by: Cloudflare, Google</li>
+            </ul>
+
+            <h3>Health Checks</h3>
+            <ul>
+                <li>CDN constantly pings edge servers</li>
+                <li>Dead server removed from DNS pool</li>
+                <li>New DNS queries won't get dead IP</li>
+                <li>Existing cached DNS still affected (TTL delay)</li>
+            </ul>
+
+            <h2>Caching Strategies: Pull vs Push</h2>
+
+            <h3>The Core Decision</h3>
+            <ul>
+                <li><strong>Pull:</strong> Fetch on-demand (reactive)</li>
+                <li><strong>Push:</strong> Pre-position (proactive)</li>
+                <li><strong>Reality:</strong> Hybrid approach</li>
+            </ul>
+
+            <h3>Pull Caching (Lazy Loading)</h3>
+            <p><strong>How it works:</strong></p>
+            <ol>
+                <li>Edge starts empty</li>
+                <li>User requests file</li>
+                <li>Cache miss → fetch from origin</li>
+                <li>Cache locally for next request</li>
+            </ol>
+
+            <p><strong>Pros:</strong></p>
+            <ul>
+                <li>Efficient storage (only cache what's requested)</li>
+                <li>No wasted bandwidth pushing unused content</li>
+                <li>Scales to unlimited content catalog</li>
+            </ul>
+
+            <p><strong>Cons:</strong></p>
+            <ul>
+                <li>First request is slow (cache miss penalty)</li>
+                <li>Origin sees more traffic</li>
+                <li>Cold start problem (new edges empty)</li>
+            </ul>
+
+            <p><strong>Best for:</strong> Long tail content, user-generated content, dynamic/personalized content</p>
+
+            <h3>Push Caching (Proactive)</h3>
+            <p><strong>How it works:</strong></p>
+            <ol>
+                <li>Origin pushes content to all edges</li>
+                <li>Content pre-positioned before users request</li>
+                <li>Updates pushed periodically (nightly, hourly)</li>
+            </ol>
+
+            <p><strong>Pros:</strong></p>
+            <ul>
+                <li>Zero latency (no cache misses)</li>
+                <li>Predictable performance</li>
+                <li>Origin controls distribution</li>
+            </ul>
+
+            <p><strong>Cons:</strong></p>
+            <ul>
+                <li>Wastes storage (pushes unpopular content)</li>
+                <li>Wastes bandwidth (pushing to edges that don't need it)</li>
+                <li>Limited to finite, known content set</li>
+            </ul>
+
+            <p><strong>Best for:</strong> Popular content (top 1-20%), static assets, new releases</p>
+
+            <h3>Hybrid Strategy (Real World)</h3>
+            <p><strong>The 80/20 Rule:</strong></p>
+            <ul>
+                <li>Push: Top 20% popular content (covers 80% of requests)</li>
+                <li>Pull: Bottom 80% long tail (covers 20% of requests)</li>
+            </ul>
+
+            <p><strong>Example: Netflix</strong></p>
+            <ul>
+                <li>PUSH: New releases, trending shows, regional popular content</li>
+                <li>PULL: Obscure documentaries, old movies</li>
+            </ul>
+
+            <p><strong>Example: E-commerce</strong></p>
+            <ul>
+                <li>PUSH: Product images, homepage assets, bestsellers</li>
+                <li>PULL: User reviews, long-tail products</li>
+            </ul>
+
+            <h3>Decision Matrix</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Content Type</th>
+                        <th>Popularity</th>
+                        <th>Change Frequency</th>
+                        <th>Strategy</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Company logo</td>
+                        <td>High</td>
+                        <td>Never</td>
+                        <td>PUSH</td>
+                    </tr>
+                    <tr>
+                        <td>Homepage CSS</td>
+                        <td>High</td>
+                        <td>Weekly</td>
+                        <td>PUSH</td>
+                    </tr>
+                    <tr>
+                        <td>Product image</td>
+                        <td>Medium</td>
+                        <td>Rare</td>
+                        <td>PUSH (bestseller) / PULL (not)</td>
+                    </tr>
+                    <tr>
+                        <td>User avatar</td>
+                        <td>Low</td>
+                        <td>Often</td>
+                        <td>PULL</td>
+                    </tr>
+                    <tr>
+                        <td>API response</td>
+                        <td>N/A</td>
+                        <td>Real-time</td>
+                        <td>Don't cache</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Cache Key Design</h2>
+
+            <h3>What is a Cache Key?</h3>
+            <p>Unique identifier for cached content. Determines if two requests get same content. Critical for correctness.</p>
+
+            <h3>Simple Cache Key</h3>
+            <pre><code>Cache key = URL
+Example: https://cdn.example.com/logo.png</code></pre>
+
+            <h3>Complex Cache Key (Vary Headers)</h3>
+            <p>Same URL, different content based on:</p>
+            <ul>
+                <li>Device type (mobile vs desktop)</li>
+                <li>Accept-Encoding (gzip vs brotli)</li>
+                <li>Accept-Language (en vs es)</li>
+            </ul>
+
+            <pre><code>import hashlib
+
+def generate_cache_key(url, headers):
+    vary_headers = ['Accept-Encoding', 'User-Agent']
+    key_parts = [url]
+    for header in vary_headers:
+        if header in headers:
+            key_parts.append(f"{header}:{headers[header]}")
+    return hashlib.md5('|'.join(key_parts).encode()).hexdigest()</code></pre>
+
+            <h3>Cache Key Pitfalls</h3>
+            <ul>
+                <li><strong>Too specific</strong> → low hit ratio (cache every variation)</li>
+                <li><strong>Too broad</strong> → serve wrong content (mobile gets desktop version)</li>
+                <li><strong>Query parameters:</strong> include or ignore?
+                    <ul>
+                        <li><code>image.jpg?user=123</code> → Don't cache (unique per user)</li>
+                        <li><code>image.jpg?v=2</code> → Cache (versioning)</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h2>Key Takeaways</h2>
+            <ul>
+                <li>Multi-tier reduces origin load exponentially - 90% × 85% = 1.5% origin hits</li>
+                <li>DNS routing + health checks = automatic failover - with TTL delay caveat</li>
+                <li>Hybrid caching wins - PUSH popular (20%), PULL long tail (80%)</li>
+                <li>Cache keys determine correctness - must handle variations properly</li>
+                <li>Origin Shield is real - AWS/Cloudflare term for parent CDN tier</li>
+            </ul>
+
+            <div style="margin-top: 40px; padding-top: 15px; border-top: 2px solid #000000; text-align: center;">
+                <a href="../index.html" class="back-link">back to all posts</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
