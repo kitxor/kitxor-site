@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIAYN Part 2: Scaled Dot-Product Attention ~ kitxor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: #ffffff;
+            color: #000000;
+            padding: 30px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .back-link::before {
+            content: '← ';
+        }
+
+        .post-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000000;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            color: #000000;
+        }
+
+        .post-meta {
+            color: #666666;
+            font-size: 0.85rem;
+        }
+
+        .content {
+            color: #000000;
+        }
+
+        h2 {
+            color: #000000;
+            font-size: 1.5rem;
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 3px solid #000000;
+            padding-left: 10px;
+        }
+
+        h3 {
+            color: #000000;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 12px;
+        }
+
+        code {
+            background: #f0f0f0;
+            color: #000000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: #f9f9f9;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #000000;
+            display: block;
+        }
+
+        ul, ol {
+            margin: 12px 0;
+            padding-left: 40px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            color: #004499;
+        }
+
+        .formula {
+            background: #f9f9f9;
+            border-left: 3px solid #000000;
+            padding: 12px 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">back to home</a>
+
+        <div class="post-header">
+            <h1>AIAYN Part 2: Scaled Dot-Product Attention</h1>
+            <div class="post-meta">2026-01-02 | transformers, attention, deep learning</div>
+        </div>
+
+        <div class="content">
+            <h2>The Problem</h2>
+            <p>Tokens need context from other tokens. The word "cat" needs to know about "sat" to understand its role in the sentence.</p>
+
+            <p>Without attention: each token processed independently. Meaning lost.</p>
+
+            <p>With attention: each token looks at all others, takes what it needs.</p>
+
+            <h2>The Pattern: Q, K, V</h2>
+            <p>Scaled dot-product attention uses three matrices:</p>
+
+            <ul>
+                <li><strong>Q (Query):</strong> "What pattern am I looking for?"</li>
+                <li><strong>K (Key):</strong> "What pattern do I match?"</li>
+                <li><strong>V (Value):</strong> "What information do I carry?"</li>
+            </ul>
+
+            <p>Think: database lookup. Query searches Keys, retrieves Values.</p>
+
+            <h2>The Algorithm</h2>
+            <p>Four steps to compute attention:</p>
+
+            <div class="formula">
+                Attention(Q, K, V) = softmax(Q·K^T / sqrt(d_k))·V
+            </div>
+
+            <ol>
+                <li><strong>scores = Q·K^T</strong> → Compute similarity between queries and keys</li>
+                <li><strong>scaled = scores / sqrt(d_k)</strong> → Prevent large values from dominating</li>
+                <li><strong>weights = softmax(scaled)</strong> → Convert to probabilities (per row)</li>
+                <li><strong>output = weights·V</strong> → Weighted mix of values</li>
+            </ol>
+
+            <h3>Why scale by sqrt(d_k)?</h3>
+            <p>Dot products grow with dimension. For d_k = 512:</p>
+            <ul>
+                <li>Unscaled: dot products can reach ±100+</li>
+                <li>Softmax gets extreme: [0.0001, 0.9999] → gradient vanishing</li>
+                <li>Scaled: divide by sqrt(512) ≈ 22.6 → keeps values reasonable</li>
+            </ul>
+
+            <h2>Example: "cat sat"</h2>
+            <p>Two tokens, d_k = 4 (tiny for clarity).</p>
+
+            <h3>Step 0: Setup</h3>
+            <pre><code>Tokens: ["cat", "sat"]
+
+Q = [[1, 0, 1, 0],    ← cat's query
+     [0, 1, 0, 1]]    ← sat's query
+
+K = [[1, 0, 1, 0],    ← cat's key
+     [0, 1, 0, 1]]    ← sat's key
+
+V = [[2, 3],          ← cat's value
+     [5, 7]]          ← sat's value</code></pre>
+
+            <h3>Step 1: scores = Q·K^T</h3>
+            <pre><code>Q·K^T = [[1,0,1,0],   [[1,0],
+         [0,1,0,1]] ·  [0,1],
+                       [1,0],
+                       [0,1]]
+
+     = [[1·1 + 0·0 + 1·1 + 0·0,  1·0 + 0·1 + 1·0 + 0·1],
+        [0·1 + 1·0 + 0·1 + 1·0,  0·0 + 1·1 + 0·0 + 1·1]]
+
+scores = [[2, 0],     ← cat: matches cat strongly, sat not at all
+          [0, 2]]     ← sat: matches sat strongly, cat not at all</code></pre>
+
+            <h3>Step 2: scaled = scores / sqrt(4) = scores / 2</h3>
+            <pre><code>scaled = [[1.0, 0.0],
+          [0.0, 1.0]]</code></pre>
+
+            <h3>Step 3: weights = softmax(scaled)</h3>
+            <pre><code>For row 0: [1.0, 0.0]
+  e^1.0 = 2.72, e^0.0 = 1.00
+  sum = 3.72
+  weights[0] = [2.72/3.72, 1.00/3.72] = [0.73, 0.27]
+
+For row 1: [0.0, 1.0]
+  weights[1] = [0.27, 0.73]
+
+weights = [[0.73, 0.27],    ← cat: 73% self, 27% sat
+           [0.27, 0.73]]    ← sat: 27% cat, 73% self</code></pre>
+
+            <h3>Step 4: output = weights·V</h3>
+            <pre><code>output = [[0.73, 0.27],   [[2, 3],
+          [0.27, 0.73]] ·  [5, 7]]
+
+       = [[0.73·2 + 0.27·5,  0.73·3 + 0.27·7],
+          [0.27·2 + 0.73·5,  0.27·3 + 0.73·7]]
+
+output = [[2.81, 4.08],    ← cat enriched with sat's context
+          [4.19, 5.92]]    ← sat enriched with cat's context</code></pre>
+
+            <h2>The Result</h2>
+            <p>Each token gets a context-enriched representation:</p>
+            <ul>
+                <li>Cat's output: mostly its own value [2,3], mixed with sat's [5,7]</li>
+                <li>Sat's output: mostly its own value [5,7], mixed with cat's [2,3]</li>
+            </ul>
+
+            <p>Attention weights learned during training determine what context matters.</p>
+
+            <h2>Key Takeaways</h2>
+            <ul>
+                <li>Q, K, V: query what you need, match keys, retrieve values</li>
+                <li>Dot product measures similarity</li>
+                <li>Scaling prevents softmax saturation</li>
+                <li>Output: weighted combination of all token values</li>
+                <li>Each token decides what context to pull from others</li>
+            </ul>
+
+            <h2>Next: Part 3</h2>
+            <p>Multi-head attention:</p>
+            <ul>
+                <li>Why one attention head isn't enough</li>
+                <li>Parallel attention subspaces</li>
+                <li>How heads learn different patterns</li>
+            </ul>
+
+            <div style="margin-top: 40px; padding-top: 15px; border-top: 2px solid #000000; text-align: center;">
+                <a href="../index.html" class="back-link">back to all posts</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
