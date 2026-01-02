@@ -144,7 +144,7 @@
         </div>
 
         <div class="content">
-            <p>"Attention Is All You Need" - the paper title wasn't hype. It was a death sentence for RNNs.</p>
+            <p>"Attention Is All You Need" - the paper title wasn't hype, it was accurate. RNNs are done.</p>
 
             <h2>The Sequential Trap</h2>
             <p>Seq2seq modeling ran on RNNs - LSTMs, GRUs, sometimes CNNs. All sequential. Each token waited for the previous one. h<sub>t</sub> depended on h<sub>t-1</sub>. You couldn't parallelize within sequences.</p>
@@ -162,7 +162,7 @@
             <p>Self-attention: all tokens attend to all tokens in parallel. No sequential dependency chain. Full GPU utilization. Transformers handle both computation and dependency modeling without a single RNN.</p>
 
             <h2>The Result</h2>
-            <p>RNNs became obsolete overnight. GPT, BERT, every LLM you use today - all transformers. Faster training, perfect parallelization, no distance decay.</p>
+            <p>Transformers made RNNs mostly irrelevant for NLP. GPT, BERT, every LLM you use today - all transformers. Faster training, perfect parallelization, no distance decay.</p>
 
             <p>The sequential bottleneck was dead. Attention was all you needed.</p>
 
