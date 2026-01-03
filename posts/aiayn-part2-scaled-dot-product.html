@@ -174,6 +174,67 @@
 
             <p>Think: database lookup. Query searches Keys, retrieves Values.</p>
 
+            <h2>Where Do Q, K, V Come From?</h2>
+            <p>Q, K, V aren't given - they're computed from input embeddings using learned weight matrices.</p>
+
+            <h3>The Setup</h3>
+            <p>Given input token embeddings X (shape: seq_len × d_model):</p>
+
+            <div class="formula">
+                Q = X·W^Q<br>
+                K = X·W^K<br>
+                V = X·W^V
+            </div>
+
+            <p>Where:</p>
+            <ul>
+                <li><strong>X:</strong> Token embeddings (seq_len × d_model)
+                    <ul>
+                        <li>Each row = one token's vector representation</li>
+                        <li>Example: "The cat sat" → 3 rows of 512-dimensional vectors</li>
+                    </ul>
+                </li>
+                <li><strong>W matrices:</strong> Linear projection matrices (the core learnable parameters)
+                    <ul>
+                        <li>W^Q: d_model × d_k (e.g., 512 × 64)</li>
+                        <li>W^K: d_model × d_k (e.g., 512 × 64)</li>
+                        <li>W^V: d_model × d_v (e.g., 512 × 64)</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h3>How Are W Matrices "Designed"?</h3>
+            <p>They're NOT designed - they're randomly initialized and learned through backpropagation.</p>
+
+            <pre><code># Initialization (Xavier/He init)
+W_Q = random_normal(mean=0, std=sqrt(2/d_model))
+W_K = random_normal(mean=0, std=sqrt(2/d_model))
+W_V = random_normal(mean=0, std=sqrt(2/d_model))</code></pre>
+
+            <p>During training, a particular attention head's Q/K/V learns to capture specific patterns:</p>
+            <ul>
+                <li><strong>Q:</strong> queries for verbs given a subject</li>
+                <li><strong>K:</strong> advertises verb-ness</li>
+                <li><strong>V:</strong> propagates verb information</li>
+            </ul>
+
+            <h3>Multi-Head Attention</h3>
+            <p>Different heads learn different patterns. Multi-head attention = multiple sets of Q, K, V matrices.</p>
+
+            <p><strong>Single head:</strong></p>
+            <ul>
+                <li>One W^Q, one W^K, one W^V</li>
+                <li>Learns one pattern (e.g., subject-verb relations)</li>
+            </ul>
+
+            <p><strong>Multi-head (h=8 in the paper):</strong></p>
+            <ul>
+                <li>Head 1: W₁^Q, W₁^K, W₁^V → might learn subject-verb</li>
+                <li>Head 2: W₂^Q, W₂^K, W₂^V → might learn positional patterns</li>
+                <li>Head 3: W₃^Q, W₃^K, W₃^V → might learn semantic similarity</li>
+                <li>... (8 heads total)</li>
+            </ul>
+
             <h2>The Algorithm</h2>
             <p>Four steps to compute attention:</p>
 
