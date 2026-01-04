@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDN Design Part 3: Cache Invalidation Strategies ~ kitxor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: #ffffff;
+            color: #000000;
+            padding: 30px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .back-link::before {
+            content: '← ';
+        }
+
+        .post-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000000;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            color: #000000;
+        }
+
+        .post-meta {
+            color: #666666;
+            font-size: 0.85rem;
+        }
+
+        .content {
+            color: #000000;
+        }
+
+        h2 {
+            color: #000000;
+            font-size: 1.5rem;
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 3px solid #000000;
+            padding-left: 10px;
+        }
+
+        h3 {
+            color: #000000;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 12px;
+        }
+
+        code {
+            background: #f0f0f0;
+            color: #000000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: #f9f9f9;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #000000;
+            display: block;
+        }
+
+        ul, ol {
+            margin: 12px 0;
+            padding-left: 40px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            color: #004499;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: #f9f9f9;
+            font-size: 0.85rem;
+        }
+
+        th, td {
+            border: 1px solid #cccccc;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background: #000000;
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+
+            table {
+                font-size: 0.75rem;
+            }
+
+            th, td {
+                padding: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">back to home</a>
+
+        <div class="post-header">
+            <h1>CDN Design Part 3: Cache Invalidation Strategies</h1>
+            <div class="post-meta">2026-01-04 | system design, cdn, caching</div>
+        </div>
+
+        <div class="content">
+            <p>You've deployed a CDN. Your homepage HTML is cached on 200 edge servers across 50 countries. At 9 AM, marketing pushes a critical update: Black Friday sale goes live. How do you ensure a billion users see the new page, not the stale cached version from yesterday?</p>
+
+            <h2>The Problem</h2>
+
+            <p><strong>Distributed state without shared memory.</strong> 200 edge servers, each with its own local cache. No shared memory, no global lock. When origin updates content, edges don't automatically know.</p>
+
+            <p><strong>Consistency vs availability.</strong> You want strong consistency, but you also want high availability (no origin overload). You can't have both. Coordinating 200 servers instantly to invalidate cache means either blocking requests (kills availability) or accepting temporary inconsistency (some users see old version).</p>
+
+            <p><strong>Scale and cost.</strong> Invalidating everything means cache miss storm. All 200 edges simultaneously fetch fresh content from origin. Origin gets slammed with 200x normal traffic. Either it dies, or you overprovision 200x capacity (expensive).</p>
+
+            <h2>Four Invalidation Strategies</h2>
+
+            <h3>1. TTL (Time-to-Live)</h3>
+
+            <p><strong>How it works:</strong></p>
+            <ul>
+                <li>Origin sets expiration time in HTTP headers</li>
+                <li>Edge caches until TTL expires</li>
+                <li>After expiration, edge fetches fresh version</li>
+                <li>No manual intervention needed</li>
+            </ul>
+
+            <pre><code>Cache-Control: max-age=3600  # Cache for 1 hour
+Cache-Control: max-age=86400 # Cache for 24 hours
+Cache-Control: no-cache      # Revalidate every time</code></pre>
+
+            <p><strong>Example:</strong></p>
+            <pre><code>9:00 AM: Origin serves homepage.html with max-age=3600
+9:05 AM: User requests homepage → Edge serves cached version
+10:00 AM: Marketing updates homepage on origin
+10:05 AM: User requests homepage → Edge still serves OLD version
+          (TTL hasn't expired yet)
+11:00 AM: TTL expires → Next request fetches NEW version</code></pre>
+
+            <p><strong>Pros:</strong></p>
+            <ul>
+                <li>Simple: set header and forget</li>
+                <li>No coordination overhead</li>
+                <li>Predictable cache behavior</li>
+                <li>No origin storms (gradual expiration across edges)</li>
+            </ul>
+
+            <p><strong>Cons:</strong></p>
+            <ul>
+                <li>Guaranteed staleness window (users see old content until TTL expires)</li>
+                <li>Can't force immediate update</li>
+                <li>Trade-off: short TTL = more origin requests, long TTL = longer staleness</li>
+            </ul>
+
+            <h3>2. Purge (Explicit Invalidation)</h3>
+
+            <p><strong>How it works:</strong></p>
+            <ul>
+                <li>API call to CDN: "delete this URL from all edges"</li>
+                <li>CDN propagates purge command to all edge servers</li>
+                <li>Edges delete cached content immediately</li>
+                <li>Next request = cache miss → fetch from origin</li>
+            </ul>
+
+            <pre><code># Cloudflare API example
+curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache" \
+  -H "Authorization: Bearer {api_token}" \
+  -d '{"files":["https://example.com/homepage.html"]}'</code></pre>
+
+            <p><strong>Example:</strong></p>
+            <pre><code>10:00 AM: Marketing updates homepage on origin
+10:01 AM: Call purge API for homepage.html
+10:02 AM: All 200 edges delete cached homepage
+10:03 AM: 1M users request homepage simultaneously
+          → 1M cache misses → Origin gets 1M requests in 1 second
+          → Origin: dead (or very slow)</code></pre>
+
+            <p><strong>Pros:</strong></p>
+            <ul>
+                <li>Immediate consistency (no stale data after purge)</li>
+                <li>Full control over invalidation timing</li>
+                <li>Works for urgent fixes (security patches, critical bugs)</li>
+            </ul>
+
+            <p><strong>Cons:</strong></p>
+            <ul>
+                <li>Cache miss storm (all edges fetch simultaneously)</li>
+                <li>Origin overload risk (must handle 200x traffic spike)</li>
+                <li>Manual intervention required (API calls, scripts)</li>
+                <li>Propagation delay (purge takes 5-30 seconds to reach all edges)</li>
+            </ul>
+
+            <h3>3. Versioned URLs</h3>
+
+            <p><strong>How it works:</strong></p>
+            <ul>
+                <li>Include version identifier in URL</li>
+                <li>Updating content = new URL</li>
+                <li>Old URL stays cached, new URL is fresh</li>
+                <li>No invalidation needed (old content just becomes unused)</li>
+            </ul>
+
+            <pre><code>Old: https://cdn.example.com/style.css
+New: https://cdn.example.com/style.css?v=2
+
+Or:
+Old: https://cdn.example.com/assets/style.abc123.css
+New: https://cdn.example.com/assets/style.def456.css</code></pre>
+
+            <p><strong>Example:</strong></p>
+            <pre><code>9:00 AM: Deploy style.css?v=1 (cached on all edges)
+10:00 AM: Update CSS, deploy style.css?v=2
+10:01 AM: Update HTML to reference style.css?v=2
+          Old users: still loading style.css?v=1 (works fine)
+          New users: loading style.css?v=2 (gets fresh version)
+No cache invalidation needed. No origin storm.</code></pre>
+
+            <p><strong>Pros:</strong></p>
+            <ul>
+                <li>Zero invalidation overhead (no purge API calls)</li>
+                <li>No cache miss storms (new URL = fresh fetch, old URL = cached)</li>
+                <li>Immutable caching (set max-age=31536000, cache forever)</li>
+                <li>Safe rollbacks (just switch HTML back to old version)</li>
+            </ul>
+
+            <p><strong>Cons:</strong></p>
+            <ul>
+                <li>Requires application changes (build system must generate versioned URLs)</li>
+                <li>Doesn't work for HTML (can't version the entry point URL)</li>
+                <li>Storage waste (old versions stay cached until TTL expires)</li>
+            </ul>
+
+            <h3>4. Soft Purge / Stale-While-Revalidate</h3>
+
+            <p><strong>How it works:</strong></p>
+            <ul>
+                <li>Mark content as stale, but keep serving it</li>
+                <li>Asynchronously fetch fresh version in background</li>
+                <li>Next request gets updated content</li>
+                <li>No cache miss (user always gets instant response)</li>
+            </ul>
+
+            <pre><code>Cache-Control: max-age=3600, stale-while-revalidate=86400
+
+Meaning:
+- Fresh for 1 hour
+- After 1 hour: serve stale, fetch fresh in background
+- After 24 hours: must fetch fresh before serving</code></pre>
+
+            <p><strong>Example:</strong></p>
+            <pre><code>10:00 AM: Marketing updates homepage on origin
+10:01 AM: Call soft purge API
+10:02 AM: User requests homepage
+          → Edge serves OLD version (instant response)
+          → Edge fetches NEW version in background (async)
+10:03 AM: Next user gets NEW version
+          Total staleness window: ~1 minute (one request)</code></pre>
+
+            <p><strong>Pros:</strong></p>
+            <ul>
+                <li>No cache miss (always instant response)</li>
+                <li>No origin storm (background fetches spread out over time)</li>
+                <li>Best performance (serve stale while updating)</li>
+            </ul>
+
+            <p><strong>Cons:</strong></p>
+            <ul>
+                <li>Temporary inconsistency (first request after invalidation gets stale data)</li>
+                <li>Not suitable for critical updates (security fixes need immediate consistency)</li>
+                <li>Requires CDN support (not all CDNs implement this)</li>
+            </ul>
+
+            <h2>Trade-offs Table</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Strategy</th>
+                        <th>Consistency</th>
+                        <th>Performance</th>
+                        <th>Complexity</th>
+                        <th>Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>TTL</td>
+                        <td>Weak (stale until expiry)</td>
+                        <td>High (no misses)</td>
+                        <td>Low (set header)</td>
+                        <td>Low</td>
+                    </tr>
+                    <tr>
+                        <td>Purge</td>
+                        <td>Strong (immediate)</td>
+                        <td>Low (miss storm)</td>
+                        <td>Medium (API calls)</td>
+                        <td>High (origin load)</td>
+                    </tr>
+                    <tr>
+                        <td>Versioned URLs</td>
+                        <td>Strong (new URL)</td>
+                        <td>High (no misses)</td>
+                        <td>High (app changes)</td>
+                        <td>Low</td>
+                    </tr>
+                    <tr>
+                        <td>Soft Purge</td>
+                        <td>Eventual (1 request delay)</td>
+                        <td>Highest (serve stale)</td>
+                        <td>Medium (CDN support)</td>
+                        <td>Low</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Real-World Choices</h2>
+
+            <h3>What Cloudflare Does</h3>
+            <ol>
+                <li><strong>Purge by URL:</strong> Single file invalidation
+                    <pre><code>curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache" \
+  -d '{"files":["https://example.com/logo.png"]}'</code></pre>
+                </li>
+                <li><strong>Purge by tag:</strong> Group of files (tag assets during upload)
+                    <pre><code>curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/purge_cache" \
+  -d '{"tags":["homepage-assets"]}'</code></pre>
+                </li>
+                <li><strong>Purge everything:</strong> Nuclear option (dangerous, avoid in production)</li>
+                <li><strong>Cache-Control headers:</strong> TTL-based (recommended for most cases)</li>
+            </ol>
+
+            <h3>When to Use What</h3>
+
+            <p><strong>TTL (default choice):</strong></p>
+            <ul>
+                <li>User profile images (staleness acceptable)</li>
+                <li>Like counts, view counts (eventual consistency fine)</li>
+                <li>Blog posts (5-minute staleness won't matter)</li>
+                <li>Static content that changes infrequently</li>
+            </ul>
+
+            <p><strong>Purge:</strong></p>
+            <ul>
+                <li>Low traffic content (cache miss storm won't kill origin)</li>
+                <li>Urgent fixes (security patches, broken images)</li>
+                <li>Strong origin capacity (can handle 200x spike)</li>
+                <li>Legal/compliance requirements (GDPR deletion requests)</li>
+            </ul>
+
+            <p><strong>Versioned URLs:</strong></p>
+            <ul>
+                <li>High traffic assets (CSS, JS, images)</li>
+                <li>Immutable content (once deployed, never changes)</li>
+                <li>Build-time generated assets (webpack, vite)</li>
+                <li>Best for: SPAs, modern web apps with build pipelines</li>
+            </ul>
+
+            <p><strong>Soft Purge:</strong></p>
+            <ul>
+                <li>High traffic pages with tolerable staleness (homepage, product pages)</li>
+                <li>Content that updates frequently (news sites, dashboards)</li>
+                <li>Want performance + freshness (not critical consistency)</li>
+            </ul>
+
+            <h2>Conclusion</h2>
+
+            <p>For most use cases, default to TTL-based caching with versioned URLs for static assets. TTL handles 80% of cases (set reasonable expiration times and forget). Versioned URLs solve the 20% where you need immediate updates without invalidation overhead. Reserve purge for emergencies (security fixes, critical bugs). Use soft purge for high-traffic pages where you can tolerate brief staleness.</p>
+
+            <p><strong>Worst choice:</strong> Relying on manual purges for routine updates. You'll either forget to purge (serve stale data) or purge too often (origin overload).</p>
+
+            <p>Pick your consistency guarantees upfront, then choose your caching strategy. Strong consistency (financial data, inventory) → short TTL + purge. Eventual consistency (social media, analytics) → long TTL. Immutable content (versioned assets) → cache forever.</p>
+
+            <div style="margin-top: 40px; padding-top: 15px; border-top: 2px solid #000000; text-align: center;">
+                <a href="../index.html" class="back-link">back to all posts</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
