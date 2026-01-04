@@ -57,6 +57,13 @@
             font-size: 0.85rem;
         }
 
+        .updates {
+            color: #888888;
+            font-size: 0.75rem;
+            margin-top: 4px;
+            font-style: italic;
+        }
+
         .content {
             color: #000000;
         }
@@ -173,6 +180,7 @@
         <div class="post-header">
             <h1>CDN Design Part 2: Architecture & Caching Strategies</h1>
             <div class="post-meta">2026-01-02 | system design, cdn, networking</div>
+            <div class="updates">updates: 2026-01-04</div>
         </div>
 
         <div class="content">
@@ -182,37 +190,79 @@
 
             <h3>Cache HIT (Fast Path)</h3>
             <pre><code>User requests cdn.example.com/logo.png
-1. User → DNS (returns nearest edge IP)
-2. User → Edge server checks cache → HIT
-3. Return immediately
+Assume: User ↔ Edge RTT = 30ms
 
-Timeline: ~100ms
-├─ TCP + TLS handshake: 80ms (client ↔ edge)
-└─ HTTP request/response: 20ms</code></pre>
+1. DNS lookup - 30ms (1 RTT)
+   User → DNS: query                                 [15ms]
+   DNS → User: edge IP                               [15ms]
+
+2. User ↔ Edge: TCP handshake - 45ms (1.5 RTT)
+   User → Edge: SYN                                   [15ms]
+   Edge → User: SYN-ACK                              [15ms]
+   User → Edge: ACK                                   [15ms]
+
+3. User ↔ Edge: TLS handshake - 30ms (1 RTT, TLS 1.3)
+   User → Edge: ClientHello                          [15ms]
+   Edge → User: ServerHello + cert                   [15ms]
+
+4. HTTP request + cache hit - 16ms
+   User → Edge: GET /logo.png                        [15ms]
+   Edge checks cache → HIT                           [1ms local]
+
+5. Edge → User: HTTP response - 15ms
+   Edge → User: 200 OK + image data                  [15ms]
+
+Total: ~136ms</code></pre>
 
             <h3>Cache MISS (Slow Path)</h3>
             <pre><code>User requests cdn.example.com/video.mp4
-1. User → Edge checks cache → MISS
-2. Edge forwards to parent CDN
-3. Parent checks cache → MISS (worst case)
-4. Parent fetches from origin
-5. Cache at parent + edge
-6. Return to user
+Assume: User ↔ Edge RTT = 30ms, Edge ↔ Origin RTT = 200ms (cross-continent)
 
-Timeline:
-First request: ~700ms
-├─ Client ↔ edge: 100ms (TCP/TLS/request)
-├─ Edge ↔ origin: 600ms (cross-continent TCP/TLS/fetch)
-└─ Edge → client: 20ms (response)
+1. DNS lookup - 30ms (1 RTT)
+   User → DNS: query                                 [15ms]
+   DNS → User: edge IP                               [15ms]
 
-Subsequent requests: ~100ms (served from edge cache)</code></pre>
+2. User ↔ Edge: TCP handshake - 45ms (1.5 RTT)
+   User → Edge: SYN                                   [15ms]
+   Edge → User: SYN-ACK                              [15ms]
+   User → Edge: ACK                                   [15ms]
+
+3. User ↔ Edge: TLS handshake - 30ms (1 RTT, TLS 1.3)
+   User → Edge: ClientHello                          [15ms]
+   Edge → User: ServerHello + cert                   [15ms]
+
+4. User → Edge: HTTP request - 16ms
+   User → Edge: GET /video.mp4                       [15ms]
+   Edge checks cache → MISS                          [1ms local]
+
+5. Edge ↔ Origin: TCP handshake - 300ms (1.5 RTT)
+   Edge → Origin: SYN                                 [100ms]
+   Origin → Edge: SYN-ACK                            [100ms]
+   Edge → Origin: ACK                                 [100ms]
+
+6. Edge ↔ Origin: TLS handshake - 200ms (1 RTT)
+   Edge → Origin: ClientHello                        [100ms]
+   Origin → Edge: ServerHello + cert                 [100ms]
+
+7. Edge → Origin: HTTP request + response - 410ms
+   Edge → Origin: GET /video.mp4                     [100ms]
+   Origin processes request                          [10ms]
+   Origin → Edge: 200 OK + 10MB video data           [100ms + 200ms transfer]
+
+8. Edge writes to cache - 5ms local
+
+9. Edge → User: HTTP response - 115ms
+   Edge → User: 200 OK + video data                  [15ms + 100ms transfer]
+
+First request total: ~1,151ms
+Subsequent requests: ~136ms (steps 1-4 only, cache HIT)</code></pre>
 
             <h3>Flow Diagram</h3>
             <pre><code>User → DNS → Edge Server
-         ├─ Cache HIT (100ms)
+         ├─ Cache HIT (~136ms)
          └─ Cache MISS → Parent CDN
-                     ├─ Cache HIT (300ms)
-                     └─ Cache MISS → Origin (700ms)</code></pre>
+                     ├─ Cache HIT (~600ms)
+                     └─ Cache MISS → Origin (~1,151ms)</code></pre>
 
             <h2>Multi-Tier Architecture</h2>
 
