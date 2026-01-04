@@ -267,23 +267,9 @@ Subsequent requests: ~136ms (steps 1-4 only, cache HIT)</code></pre>
             <h2>Multi-Tier Architecture</h2>
 
             <h3>Why Multiple Tiers?</h3>
-            <p><strong>Single-tier problem:</strong></p>
-            <ul>
-                <li>200 edges, each with 10% cache miss rate</li>
-                <li>Popular video requested globally</li>
-                <li>All 200 edges miss simultaneously</li>
-                <li>200 parallel requests slam origin → Origin: dead</li>
-            </ul>
+            <p><strong>Single-tier problem:</strong> 200 edges miss simultaneously → 200 parallel requests slam origin → dead.</p>
 
-            <p><strong>Multi-tier solution:</strong></p>
-            <ul>
-                <li>200 child edges → 10 parent CDNs (20 edges per parent)</li>
-                <li>Same popular video miss: 200 edges forward to parents</li>
-                <li>10 parents de-duplicate → 10 requests to origin (not 200)</li>
-                <li><strong>Origin load: 95% reduction</strong></li>
-            </ul>
-
-            <p>This parent tier is called <strong>Origin Shield</strong> (AWS/Cloudflare term) - it collapses duplicate requests before hitting origin.</p>
+            <p><strong>Multi-tier solution:</strong> 200 child edges → 10 parent CDNs. Parents de-duplicate → 10 requests to origin (not 200). <strong>95% origin load reduction.</strong> Parent tier called <strong>Origin Shield</strong> (AWS/Cloudflare).</p>
 
             <h3>Math</h3>
             <pre><code>1M requests/day:
@@ -296,152 +282,29 @@ With parent: 15K origin requests
 Reduction: 85%</code></pre>
 
             <h3>The Three Tiers</h3>
-            <p><strong>Child CDN (Edge Servers):</strong></p>
-            <ul>
-                <li>Count: 200+ globally (AWS CloudFront has 450+, Fastly ~70)</li>
-                <li>Storage: 1-10 TB per server</li>
-                <li>Cache: Hot content (top 10-20% popular)</li>
-                <li>Hit ratio: 85-95%</li>
-            </ul>
+            <p><strong>Child CDN (Edge):</strong> 200+ globally (CloudFront 450+). 1-10 TB storage. Hot content (top 10-20%). 85-95% hit ratio.</p>
 
-            <p><strong>Parent CDN (Origin Shield):</strong></p>
-            <ul>
-                <li>Count: 10-20 globally (AWS has 13 Origin Shield regions)</li>
-                <li>Storage: 50-500 TB per server</li>
-                <li>Cache: Long tail content</li>
-                <li>Hit ratio: 80-90% of child misses</li>
-                <li>Industry names: AWS "Origin Shield", Cloudflare "Argo Tiered Caching"</li>
-            </ul>
+            <p><strong>Parent CDN (Origin Shield):</strong> 10-20 globally (AWS has 13). 50-500 TB storage. Long tail content. 80-90% hit ratio on child misses.</p>
 
-            <p><strong>Origin Server:</strong></p>
-            <ul>
-                <li>Count: 1 (or small cluster)</li>
-                <li>Storage: Unlimited (source of truth)</li>
-                <li>Gets hit: Only on double cache miss (~1-2% of total requests)</li>
-            </ul>
+            <p><strong>Origin:</strong> 1 server/cluster. Unlimited storage. Gets hit only on double miss (~1-2% of total).</p>
 
             <h2>Edge Server Selection</h2>
 
-            <h3>DNS-Based Geo-Routing</h3>
-            <p>User queries DNS for <code>cdn.example.com</code>:</p>
-            <ol>
-                <li>Authoritative DNS looks at user IP</li>
-                <li>GeoIP database: maps IP → location</li>
-                <li>Returns nearest edge server IP</li>
-                <li>User connects to that edge</li>
-            </ol>
+            <p><strong>DNS-Based Geo-Routing:</strong> User queries DNS → GeoIP maps IP to location → returns nearest edge IP. "Nearest" = geographic distance + network topology + measured latency + server load.</p>
 
-            <p><strong>"Nearest" determined by:</strong></p>
-            <ul>
-                <li>Geographic distance (lat/long)</li>
-                <li>Network topology (AS path length)</li>
-                <li>Measured latency (active probes)</li>
-                <li>Server load (avoid overloaded edges)</li>
-            </ul>
+            <p><strong>DNS TTL problem:</strong> DNS cached 60-300s. Edge dies → users hit dead edge until TTL expires. Trade-off: lower TTL = faster failover, more DNS queries.</p>
 
-            <h3>DNS TTL and Failover</h3>
-            <p>DNS response cached (TTL: 60-300 seconds).</p>
-            <p><strong>Problem:</strong></p>
-            <ul>
-                <li>Edge goes down at 10:00 AM</li>
-                <li>User's DNS cached at 9:55 AM (expires 10:00 AM)</li>
-                <li>User keeps hitting dead edge until DNS expires</li>
-                <li>Failover delay = DNS TTL duration</li>
-            </ul>
-            <p><strong>Trade-off:</strong> Lower TTL = faster failover, more DNS queries</p>
+            <p><strong>Anycast (alternative):</strong> Multiple edges share same IP (1.1.1.1). BGP routes to nearest. Faster failover, no DNS delay. Used by Cloudflare, Google.</p>
 
-            <h3>Anycast IP (Alternative)</h3>
-            <ul>
-                <li>Multiple edges share same IP (e.g., 1.1.1.1)</li>
-                <li>BGP routing automatically directs to nearest</li>
-                <li>Faster failover (no DNS caching delay)</li>
-                <li>Used by: Cloudflare, Google</li>
-            </ul>
-
-            <h3>Health Checks</h3>
-            <ul>
-                <li>CDN constantly pings edge servers</li>
-                <li>Dead server removed from DNS pool</li>
-                <li>New DNS queries won't get dead IP</li>
-                <li>Existing cached DNS still affected (TTL delay)</li>
-            </ul>
+            <p><strong>Health checks:</strong> CDN pings edges. Dead server removed from DNS pool. Existing cached DNS still affected (TTL delay).</p>
 
             <h2>Caching Strategies: Pull vs Push</h2>
 
-            <h3>The Core Decision</h3>
-            <ul>
-                <li><strong>Pull:</strong> Fetch on-demand (reactive)</li>
-                <li><strong>Push:</strong> Pre-position (proactive)</li>
-                <li><strong>Reality:</strong> Hybrid approach</li>
-            </ul>
+            <p><strong>Pull (Lazy):</strong> Fetch on-demand. Edge starts empty → cache miss → fetch from origin → cache locally. Efficient storage, scales to unlimited catalog. First request slow, origin sees more traffic. Best for: long tail, user-generated content.</p>
 
-            <h3>Pull Caching (Lazy Loading)</h3>
-            <p><strong>How it works:</strong></p>
-            <ol>
-                <li>Edge starts empty</li>
-                <li>User requests file</li>
-                <li>Cache miss → fetch from origin</li>
-                <li>Cache locally for next request</li>
-            </ol>
+            <p><strong>Push (Proactive):</strong> Pre-position content. Origin pushes to all edges before requests. Zero latency, predictable. Wastes storage/bandwidth on unpopular content. Best for: top 1-20% popular, static assets, new releases.</p>
 
-            <p><strong>Pros:</strong></p>
-            <ul>
-                <li>Efficient storage (only cache what's requested)</li>
-                <li>No wasted bandwidth pushing unused content</li>
-                <li>Scales to unlimited content catalog</li>
-            </ul>
-
-            <p><strong>Cons:</strong></p>
-            <ul>
-                <li>First request is slow (cache miss penalty)</li>
-                <li>Origin sees more traffic</li>
-                <li>Cold start problem (new edges empty)</li>
-            </ul>
-
-            <p><strong>Best for:</strong> Long tail content, user-generated content, dynamic/personalized content</p>
-
-            <h3>Push Caching (Proactive)</h3>
-            <p><strong>How it works:</strong></p>
-            <ol>
-                <li>Origin pushes content to all edges</li>
-                <li>Content pre-positioned before users request</li>
-                <li>Updates pushed periodically (nightly, hourly)</li>
-            </ol>
-
-            <p><strong>Pros:</strong></p>
-            <ul>
-                <li>Zero latency (no cache misses)</li>
-                <li>Predictable performance</li>
-                <li>Origin controls distribution</li>
-            </ul>
-
-            <p><strong>Cons:</strong></p>
-            <ul>
-                <li>Wastes storage (pushes unpopular content)</li>
-                <li>Wastes bandwidth (pushing to edges that don't need it)</li>
-                <li>Limited to finite, known content set</li>
-            </ul>
-
-            <p><strong>Best for:</strong> Popular content (top 1-20%), static assets, new releases</p>
-
-            <h3>Hybrid Strategy (Real World)</h3>
-            <p><strong>The 80/20 Rule:</strong></p>
-            <ul>
-                <li>Push: Top 20% popular content (covers 80% of requests)</li>
-                <li>Pull: Bottom 80% long tail (covers 20% of requests)</li>
-            </ul>
-
-            <p><strong>Example: Netflix</strong></p>
-            <ul>
-                <li>PUSH: New releases, trending shows, regional popular content</li>
-                <li>PULL: Obscure documentaries, old movies</li>
-            </ul>
-
-            <p><strong>Example: E-commerce</strong></p>
-            <ul>
-                <li>PUSH: Product images, homepage assets, bestsellers</li>
-                <li>PULL: User reviews, long-tail products</li>
-            </ul>
+            <p><strong>Hybrid (reality):</strong> 80/20 rule - PUSH top 20% (covers 80% requests), PULL bottom 80% (covers 20% requests). Netflix: PUSH new releases/trending, PULL obscure documentaries. E-commerce: PUSH homepage/bestsellers, PULL user reviews/long-tail.</p>
 
             <h3>Decision Matrix</h3>
             <table>
@@ -489,50 +352,23 @@ Reduction: 85%</code></pre>
 
             <h2>Cache Key Design</h2>
 
-            <h3>What is a Cache Key?</h3>
-            <p>Unique identifier for cached content. Determines if two requests get same content. Critical for correctness.</p>
+            <p>Unique identifier for cached content. Determines if two requests get same content. Simple: <code>cache_key = URL</code>. Complex: include headers (device type, encoding, language).</p>
 
-            <h3>Simple Cache Key</h3>
-            <pre><code>Cache key = URL
-Example: https://cdn.example.com/logo.png</code></pre>
-
-            <h3>Complex Cache Key (Vary Headers)</h3>
-            <p>Same URL, different content based on:</p>
-            <ul>
-                <li>Device type (mobile vs desktop)</li>
-                <li>Accept-Encoding (gzip vs brotli)</li>
-                <li>Accept-Language (en vs es)</li>
-            </ul>
-
-            <pre><code>import hashlib
-
-def generate_cache_key(url, headers):
-    vary_headers = ['Accept-Encoding', 'User-Agent']
+            <pre><code>def generate_cache_key(url, headers):
     key_parts = [url]
-    for header in vary_headers:
+    for header in ['Accept-Encoding', 'User-Agent']:
         if header in headers:
             key_parts.append(f"{header}:{headers[header]}")
     return hashlib.md5('|'.join(key_parts).encode()).hexdigest()</code></pre>
 
-            <h3>Cache Key Pitfalls</h3>
-            <ul>
-                <li><strong>Too specific</strong> → low hit ratio (cache every variation)</li>
-                <li><strong>Too broad</strong> → serve wrong content (mobile gets desktop version)</li>
-                <li><strong>Query parameters:</strong> include or ignore?
-                    <ul>
-                        <li><code>image.jpg?user=123</code> → Don't cache (unique per user)</li>
-                        <li><code>image.jpg?v=2</code> → Cache (versioning)</li>
-                    </ul>
-                </li>
-            </ul>
+            <p><strong>Pitfalls:</strong> Too specific → low hit ratio. Too broad → serve wrong content (mobile gets desktop). Query params: <code>image.jpg?user=123</code> → don't cache (per-user). <code>image.jpg?v=2</code> → cache (versioning).</p>
 
             <h2>Key Takeaways</h2>
             <ul>
-                <li>Multi-tier reduces origin load exponentially - 90% × 85% = 1.5% origin hits</li>
-                <li>DNS routing + health checks = automatic failover - with TTL delay caveat</li>
-                <li>Hybrid caching wins - PUSH popular (20%), PULL long tail (80%)</li>
-                <li>Cache keys determine correctness - must handle variations properly</li>
-                <li>Origin Shield is real - AWS/Cloudflare term for parent CDN tier</li>
+                <li>Multi-tier: 90% × 85% = 1.5% origin hits (Origin Shield de-duplicates requests)</li>
+                <li>DNS routing + health checks = automatic failover (TTL delay caveat)</li>
+                <li>Hybrid wins: PUSH popular (20%), PULL long tail (80%)</li>
+                <li>Cache keys determine correctness - balance specificity vs hit ratio</li>
             </ul>
 
             <div style="margin-top: 40px; padding-top: 15px; border-top: 2px solid #000000; text-align: center;">
