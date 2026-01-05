@@ -140,7 +140,7 @@
 
         <div class="post-header">
             <h1>Why Transformers Killed RNNs</h1>
-            <div class="post-meta">2025-12-30 | machine learning, deep learning, transformers</div>
+            <div class="post-meta">2025-12-30 | updated: 2026-01-05 | machine learning, deep learning, transformers</div>
         </div>
 
         <div class="content">
@@ -160,6 +160,23 @@
             <p>What if attention wasn't a helper? What if it was everything?</p>
 
             <p>Self-attention: all tokens attend to all tokens in parallel. No sequential dependency chain. Full GPU utilization. Transformers handle both computation and dependency modeling without a single RNN.</p>
+
+            <h3>How Self-Attention Works</h3>
+            <p>At the core of self-attention are learned weight matrices that transform input tokens:</p>
+
+            <ul>
+                <li><strong>X</strong> = input token (d<sub>model</sub> dimension)</li>
+                <li><strong>W<sub>q</sub>, W<sub>k</sub>, W<sub>v</sub></strong> = learned weight matrices</li>
+            </ul>
+
+            <p>These matrices create three representations:</p>
+            <ul>
+                <li><strong>Q</strong> = XW<sub>q</sub> (queries: what I'm looking for)</li>
+                <li><strong>K</strong> = XW<sub>k</sub> (keys: what I contain)</li>
+                <li><strong>V</strong> = XW<sub>v</sub> (values: what I'll pass forward)</li>
+            </ul>
+
+            <p><strong>What's d<sub>model</sub>?</strong> It's the embedding space - the size of representation throughout the transformer. Every token, at every layer, maintains this same dimensionality. In the original paper, d<sub>model</sub> = 512.</p>
 
             <h2>The Result</h2>
             <p>Transformers made RNNs mostly irrelevant for NLP. GPT, BERT, every LLM you use today - all transformers. Faster training, perfect parallelization, no distance decay.</p>
