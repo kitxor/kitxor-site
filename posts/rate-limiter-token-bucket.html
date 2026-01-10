@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Bucket Rate Limiting ~ kitxor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: #ffffff;
+            color: #000000;
+            padding: 30px 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .back-link {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .back-link::before {
+            content: '← ';
+        }
+
+        .post-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000000;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            color: #000000;
+        }
+
+        .post-meta {
+            color: #666666;
+            font-size: 0.85rem;
+        }
+
+        .content {
+            color: #000000;
+        }
+
+        h2 {
+            color: #000000;
+            font-size: 1.5rem;
+            margin-top: 30px;
+            margin-bottom: 12px;
+            border-left: 3px solid #000000;
+            padding-left: 10px;
+        }
+
+        h3 {
+            color: #000000;
+            font-size: 1.2rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        p {
+            margin-bottom: 12px;
+        }
+
+        code {
+            background: #f0f0f0;
+            color: #000000;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: #f9f9f9;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #000000;
+            display: block;
+        }
+
+        ul, ol {
+            margin: 12px 0;
+            padding-left: 40px;
+        }
+
+        li {
+            margin-bottom: 6px;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            color: #004499;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 15px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            h2 {
+                font-size: 1.3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="../index.html" class="back-link">back to home</a>
+
+        <div class="post-header">
+            <h1>Token Bucket Rate Limiting</h1>
+            <div class="post-meta">2026-01-11 | system design, rate limiting, redis</div>
+        </div>
+
+        <div class="content">
+            <p>Rate limiting prevents resource exhaustion when clients flood servers with requests. Without it, a single malicious or buggy client takes down your API.</p>
+
+            <h2>How it works</h2>
+
+            <p>Each user gets a bucket with fixed capacity. Tokens refill at constant rate (e.g., 2 tokens/sec). Incoming requests consume tokens. If tokens available → pass. If empty → denied.</p>
+
+            <h2>Example</h2>
+
+            <p>Capacity = 4, Rate = 2/sec, starting with 4 tokens</p>
+
+            <pre><code>t=0s:  4 requests → all pass (4→0 tokens)
+t=0.5s: 1 request → denied (only 1 refilled)
+t=1s:  1 request → pass (2→1 tokens)
+t=2s:  3 requests → 2 pass, 1 denied (4→2→0, last denied)</code></pre>
+
+            <h2>Local implementation</h2>
+
+            <pre><code>time_elapsed = (now - last_refill).total_seconds()
+tokens = min(capacity, tokens + time_elapsed * rate)
+
+if tokens >= requested:
+    tokens -= requested
+    return "allowed"
+else:
+    return "denied"</code></pre>
+
+            <p>Store per-user: <code>tokens</code> and <code>last_refill</code> timestamp.</p>
+
+            <h2>Distributed systems</h2>
+
+            <p>Multiple servers hitting shared Redis creates race conditions:</p>
+
+            <pre><code>Server A: reads count=99
+Server B: reads count=99
+Both write 100 → limit broken (101 requests passed)</code></pre>
+
+            <h3>Solution: Redis Lua scripts execute atomically</h3>
+
+            <pre><code>local tokens = tonumber(redis.call('HGET', key, 'tokens')) or capacity
+local last_refill = tonumber(redis.call('HGET', key, 'last_refill')) or now
+
+local elapsed = now - last_refill
+tokens = math.min(capacity, tokens + elapsed * rate)
+
+if tokens >= requested then
+    tokens = tokens - requested
+    redis.call('HSET', key, 'tokens', tokens)
+    redis.call('HSET', key, 'last_refill', now)
+    return 1
+else
+    return 0
+end</code></pre>
+
+            <p>Entire script runs as single atomic operation. No race conditions.</p>
+
+            <h2>Trade-offs</h2>
+
+            <p><strong>Pros:</strong> Simple to implement, controlled bursts up to capacity</p>
+
+            <p><strong>Cons:</strong> Allows burst abuse (user consumes all tokens instantly), memory overhead (per-user state), cold start gives full bucket</p>
+
+            <p>Alternative: Leaky bucket enforces constant rate with no bursts.</p>
+
+            <h2>Code</h2>
+
+            <p>Local: <a href="https://github.com/kitxor/forge/blob/main/rateLimiter/plain_token_bucket.py">plain_token_bucket.py</a></p>
+
+            <p>Redis: <a href="https://github.com/kitxor/forge/blob/main/rateLimiter/redis_token_bucket.py">redis_token_bucket.py</a></p>
+
+            <h2>Key Takeaways</h2>
+            <ul>
+                <li>Token bucket allows controlled bursts (capacity) with sustained rate limits</li>
+                <li>Local: simple timestamp math, Redis: Lua scripts for atomicity</li>
+                <li>Distributed systems need atomic operations to prevent race conditions</li>
+                <li>Trade burst flexibility for potential abuse vs leaky bucket's strict enforcement</li>
+            </ul>
+
+            <div style="margin-top: 40px; padding-top: 15px; border-top: 2px solid #000000; text-align: center;">
+                <a href="../index.html" class="back-link">back to all posts</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
